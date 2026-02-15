@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String      @id @default(cuid())
+  email          String      @unique
+  hashedPassword String
+  name           String
+  role           Role        @default(OWNER)
+  restaurantId   String?
+  restaurant     Restaurant? @relation(fields: [restaurantId], references: [id])
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+enum Role {
+  SUPER_ADMIN
+  OWNER
+}
+
+model Restaurant {
+  id           String         @id @default(cuid())
+  slug         String         @unique
+  name         Json           // { "en": "...", "de": "..." }
+  description  Json           // { "en": "...", "de": "..." }
+  address      String
+  phone        String?
+  email        String?
+  openingHours Json           // { "monday": { "open": "09:00", "close": "22:00" }, ... }
+  logoUrl      String?
+  imageUrl     String?
+  isActive     Boolean        @default(true)
+  users        User[]
+  categories   MenuCategory[]
+  reservations Reservation[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model MenuCategory {
+  id           String     @id @default(cuid())
+  name         Json       // { "en": "...", "de": "..." }
+  sortOrder    Int        @default(0)
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  items        MenuItem[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([restaurantId])
+}
+
+model MenuItem {
+  id          String       @id @default(cuid())
+  name        Json         // { "en": "...", "de": "..." }
+  description Json?        // { "en": "...", "de": "..." }
+  price       Decimal      @db.Decimal(8, 2)
+  imageUrl    String?
+  dietaryTags String[]     // ["vegetarian", "vegan", "gluten-free", ...]
+  isAvailable Boolean      @default(true)
+  sortOrder   Int          @default(0)
+  categoryId  String
+  category    MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([categoryId])
+}
+
+model Reservation {
+  id           String            @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  date         DateTime          @db.Date
+  time         String            // "19:00"
+  partySize    Int
+  guestName    String
+  guestEmail   String?
+  guestPhone   String
+  notes        String?
+  status       ReservationStatus @default(PENDING)
+  source       String            @default("web") // "web", "phone", "ai_assistant"
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([restaurantId, date])
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
