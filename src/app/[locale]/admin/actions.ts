@@ -167,3 +167,21 @@ export async function deleteMenuItem(id: string) {
   revalidatePath("/");
   return { success: true };
 }
+
+export async function updateReservationStatus(id: string, status: string) {
+  const restaurantId = await getSessionRestaurantId();
+
+  // Verify the reservation belongs to this restaurant
+  const reservation = await prisma.reservation.findFirst({
+    where: { id, restaurantId },
+  });
+  if (!reservation) throw new Error("Reservation not found");
+
+  await prisma.reservation.update({
+    where: { id },
+    data: { status: status as "PENDING" | "CONFIRMED" | "CANCELLED" | "COMPLETED" | "NO_SHOW" },
+  });
+
+  revalidatePath("/");
+  return { success: true };
+}

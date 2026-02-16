@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import dynamic from "next/dynamic";
 import { getTranslations, getLocale } from "next-intl/server";
 import { MapPin, Phone, Mail, Clock } from "lucide-react";
 import { prisma } from "@/lib/prisma";
@@ -6,6 +7,10 @@ import { getLocalizedValue, formatPrice } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+
+const ChatWidget = dynamic(() => import("@/components/chat/ChatWidget"), {
+  ssr: false,
+});
 
 const DAYS = [
   "monday",
@@ -189,6 +194,12 @@ export default async function RestaurantPage({
           })}
         </div>
       </div>
+
+      {/* AI Chat Widget */}
+      <ChatWidget
+        restaurantId={restaurant.id}
+        restaurantName={getLocalizedValue(restaurant.name, locale)}
+      />
     </div>
   );
 }
