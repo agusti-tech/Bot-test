@@ -27,6 +27,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-restaurant_app}:${POSTGRES_PASSWORD:-localdev123}@db:5432/${POSTGRES_DB:-restaurant_db}
       AUTH_SECRET: ${AUTH_SECRET:-dev-secret-change-in-production}
       AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      AUTH_TRUST_HOST: "true"
       API_KEY: ${API_KEY:-dev-api-key-change-in-production}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
     depends_on:
