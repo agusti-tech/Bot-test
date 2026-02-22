@@ -36,7 +36,11 @@ export default function ChatWidget({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [sessionId] = useState(() => crypto.randomUUID());
+  const [sessionId] = useState(() =>
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2) + Date.now().toString(36)
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
