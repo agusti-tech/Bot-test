@@ -4,13 +4,23 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
+  // Check if already seeded
+  const existingAdmin = await prisma.user.findUnique({
+    where: { email: "admin@restaurant-app.local" },
+  });
+
+  if (existingAdmin) {
+    console.log("Database already seeded, skipping.");
+    return;
+  }
+
+  console.log("Seeding database...");
+
   // Create super admin
   const hashedPassword = await bcrypt.hash("admin123", 12);
 
-  const admin = await prisma.user.upsert({
-    where: { email: "admin@restaurant-app.local" },
-    update: {},
-    create: {
+  const admin = await prisma.user.create({
+    data: {
       email: "admin@restaurant-app.local",
       hashedPassword,
       name: "Super Admin",
@@ -21,10 +31,8 @@ async function main() {
   console.log("Created super admin:", admin.email);
 
   // Create sample restaurant
-  const restaurant = await prisma.restaurant.upsert({
-    where: { slug: "bella-italia" },
-    update: {},
-    create: {
+  const restaurant = await prisma.restaurant.create({
+    data: {
       slug: "bella-italia",
       name: { en: "Bella Italia", de: "Bella Italia" },
       description: {
@@ -51,10 +59,8 @@ async function main() {
 
   // Create restaurant owner
   const ownerPassword = await bcrypt.hash("owner123", 12);
-  const owner = await prisma.user.upsert({
-    where: { email: "owner@bella-italia.de" },
-    update: {},
-    create: {
+  const owner = await prisma.user.create({
+    data: {
       email: "owner@bella-italia.de",
       hashedPassword: ownerPassword,
       name: "Marco Rossi",
@@ -301,10 +307,8 @@ async function main() {
   console.log("Created restaurant tables for Bella Italia");
 
   // Create a second sample restaurant
-  const restaurant2 = await prisma.restaurant.upsert({
-    where: { slug: "zum-goldenen-hirsch" },
-    update: {},
-    create: {
+  const restaurant2 = await prisma.restaurant.create({
+    data: {
       slug: "zum-goldenen-hirsch",
       name: { en: "The Golden Deer", de: "Zum Goldenen Hirsch" },
       description: {
