@@ -1,8 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useActionState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { UtensilsCrossed } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,35 +13,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { authenticate } from "./actions";
 
 export default function LoginPage() {
   const t = useTranslations("admin");
   const locale = useLocale();
-  const router = useRouter();
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-
-    const formData = new FormData(e.currentTarget);
-
-    const result = await signIn("credentials", {
-      email: formData.get("email"),
-      password: formData.get("password"),
-      redirect: false,
-    });
-
-    if (result?.error) {
-      setError(t("invalidCredentials"));
-      setLoading(false);
-    } else {
-      router.push(`/${locale}/admin`);
-      router.refresh();
-    }
-  }
+  const [errorMessage, formAction, isPending] = useActionState(
+    authenticate.bind(null, locale),
+    undefined
+  );
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-4">
@@ -56,7 +34,7 @@ export default function LoginPage() {
           <CardDescription>{t("welcomeBack")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form action={formAction} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">{t("email")}</Label>
               <Input
@@ -76,11 +54,13 @@ export default function LoginPage() {
                 required
               />
             </div>
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
+            {errorMessage && (
+              <p className="text-sm text-destructive">
+                {t("invalidCredentials")}
+              </p>
             )}
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "..." : t("signIn")}
+            <Button type="submit" className="w-full" disabled={isPending}>
+              {isPending ? "..." : t("signIn")}
             </Button>
           </form>
         </CardContent>
