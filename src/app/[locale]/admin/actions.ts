@@ -275,3 +275,88 @@ export async function updateTablePositions(
   revalidatePath("/");
   return { success: true };
 }
+
+// ── Host Dashboard Actions ──────────────────────────────────────────
+
+export async function seatReservation(reservationId: string) {
+  const restaurantId = await getSessionRestaurantId();
+  const reservation = await prisma.reservation.findFirst({
+    where: { id: reservationId, restaurantId },
+  });
+  if (!reservation) throw new Error("Reservation not found");
+
+  await prisma.reservation.update({
+    where: { id: reservationId },
+    data: {
+      seatedAt: new Date(),
+      status: "CONFIRMED",
+    },
+  });
+
+  revalidatePath("/");
+  return { success: true };
+}
+
+export async function completeReservation(reservationId: string) {
+  const restaurantId = await getSessionRestaurantId();
+  const reservation = await prisma.reservation.findFirst({
+    where: { id: reservationId, restaurantId },
+  });
+  if (!reservation) throw new Error("Reservation not found");
+
+  await prisma.reservation.update({
+    where: { id: reservationId },
+    data: {
+      completedAt: new Date(),
+      status: "COMPLETED",
+    },
+  });
+
+  revalidatePath("/");
+  return { success: true };
+}
+
+export async function markNoShow(reservationId: string) {
+  const restaurantId = await getSessionRestaurantId();
+  const reservation = await prisma.reservation.findFirst({
+    where: { id: reservationId, restaurantId },
+  });
+  if (!reservation) throw new Error("Reservation not found");
+
+  await prisma.reservation.update({
+    where: { id: reservationId },
+    data: { status: "NO_SHOW" },
+  });
+
+  revalidatePath("/");
+  return { success: true };
+}
+
+export async function createWalkIn(data: {
+  guestName: string;
+  guestPhone?: string;
+  partySize: number;
+  tableId: string;
+}) {
+  const restaurantId = await getSessionRestaurantId();
+  const now = new Date();
+  const time = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
+
+  const reservation = await prisma.reservation.create({
+    data: {
+      restaurantId,
+      date: now,
+      time,
+      partySize: data.partySize,
+      guestName: data.guestName,
+      guestPhone: data.guestPhone || "",
+      source: "walk_in",
+      status: "CONFIRMED",
+      tableId: data.tableId,
+      seatedAt: now,
+    },
+  });
+
+  revalidatePath("/");
+  return { success: true, reservationId: reservation.id };
+}

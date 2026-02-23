@@ -11,6 +11,7 @@ import {
   LogOut,
   Armchair,
   Map,
+  Monitor,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,11 @@ export default function AdminSidebar() {
       href: `/${locale}/admin/reservations`,
       label: t("reservations"),
       icon: CalendarDays,
+    },
+    {
+      href: `/${locale}/admin/dashboard`,
+      label: t("hostDashboard"),
+      icon: Monitor,
     },
   ];
 
