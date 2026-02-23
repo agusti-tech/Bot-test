@@ -9,6 +9,8 @@ import {
   UtensilsCrossed,
   CalendarDays,
   LogOut,
+  Armchair,
+  Map,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -35,6 +37,16 @@ export default function AdminSidebar() {
       href: `/${locale}/admin/menu`,
       label: t("menuManagement"),
       icon: UtensilsCrossed,
+    },
+    {
+      href: `/${locale}/admin/tables`,
+      label: t("tables"),
+      icon: Armchair,
+    },
+    {
+      href: `/${locale}/admin/floor-plan`,
+      label: t("floorPlan"),
+      icon: Map,
     },
     {
       href: `/${locale}/admin/reservations`,

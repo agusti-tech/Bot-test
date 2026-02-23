@@ -44,6 +44,8 @@ interface Reservation {
   status: string;
   source: string;
   createdAt: string;
+  tableLabel: string | null;
+  tableZone: string | null;
 }
 
 interface ReservationManagerProps {
@@ -62,6 +64,7 @@ const SOURCE_COLORS: Record<string, string> = {
   web: "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300",
   phone: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
   ai_assistant: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
+  walk_in: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400",
 };
 
 // Valid status transitions
@@ -129,6 +132,8 @@ export default function ReservationManager({
         return t("sourcePhone");
       case "ai_assistant":
         return t("sourceAI");
+      case "walk_in":
+        return t("sourceWalkIn");
       default:
         return source;
     }
@@ -240,6 +245,7 @@ export default function ReservationManager({
                   <TableHead>{t("guestName")}</TableHead>
                   <TableHead>{t("partySize")}</TableHead>
                   <TableHead>{t("guestPhone")}</TableHead>
+                  <TableHead>{t("table")}</TableHead>
                   <TableHead>{t("source")}</TableHead>
                   <TableHead>{t("status")}</TableHead>
                   <TableHead>{t("actions")}</TableHead>
@@ -266,6 +272,16 @@ export default function ReservationManager({
                       <TableCell>{reservation.partySize}</TableCell>
                       <TableCell className="whitespace-nowrap">
                         {reservation.guestPhone}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {reservation.tableLabel ? (
+                          <span className="font-medium">{reservation.tableLabel}</span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">{t("unassigned")}</span>
+                        )}
+                        {reservation.tableZone && (
+                          <div className="text-xs text-muted-foreground">{reservation.tableZone}</div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge

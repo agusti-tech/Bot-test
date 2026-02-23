@@ -41,6 +41,7 @@ export default async function ReservationsPage({
   const reservations = await prisma.reservation.findMany({
     where,
     orderBy: [{ date: "desc" }, { time: "asc" }],
+    include: { table: { select: { label: true, zone: true } } },
   });
 
   // Serialize for the client component
@@ -56,6 +57,8 @@ export default async function ReservationsPage({
     status: r.status,
     source: r.source,
     createdAt: r.createdAt.toISOString(),
+    tableLabel: r.table?.label || null,
+    tableZone: r.table?.zone || null,
   }));
 
   return (

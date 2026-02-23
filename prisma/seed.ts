@@ -279,6 +279,27 @@ async function main() {
 
   console.log("Created menu items");
 
+  // Create restaurant tables for Bella Italia
+  await prisma.restaurantTable.createMany({
+    data: [
+      // Main Dining - 5 tables
+      { restaurantId: restaurant.id, label: "T1", minCapacity: 1, maxCapacity: 2, shape: "SQUARE", zone: "Main Dining", posX: 80, posY: 80, width: 60, height: 60, sortOrder: 0 },
+      { restaurantId: restaurant.id, label: "T2", minCapacity: 1, maxCapacity: 2, shape: "SQUARE", zone: "Main Dining", posX: 200, posY: 80, width: 60, height: 60, sortOrder: 1 },
+      { restaurantId: restaurant.id, label: "T3", minCapacity: 2, maxCapacity: 4, shape: "RECTANGLE", zone: "Main Dining", posX: 80, posY: 200, width: 100, height: 70, sortOrder: 2 },
+      { restaurantId: restaurant.id, label: "T4", minCapacity: 2, maxCapacity: 4, shape: "RECTANGLE", zone: "Main Dining", posX: 240, posY: 200, width: 100, height: 70, sortOrder: 3 },
+      { restaurantId: restaurant.id, label: "T5", minCapacity: 4, maxCapacity: 6, shape: "RECTANGLE", zone: "Main Dining", posX: 140, posY: 340, width: 130, height: 80, isCombinable: true, sortOrder: 4 },
+      // Patio - 3 tables
+      { restaurantId: restaurant.id, label: "P1", minCapacity: 1, maxCapacity: 2, shape: "ROUND", zone: "Patio", posX: 480, posY: 80, width: 60, height: 60, sortOrder: 5 },
+      { restaurantId: restaurant.id, label: "P2", minCapacity: 2, maxCapacity: 4, shape: "ROUND", zone: "Patio", posX: 580, posY: 80, width: 70, height: 70, sortOrder: 6 },
+      { restaurantId: restaurant.id, label: "P3", minCapacity: 2, maxCapacity: 4, shape: "ROUND", zone: "Patio", posX: 530, posY: 200, width: 70, height: 70, sortOrder: 7 },
+      // Bar - 2 spots
+      { restaurantId: restaurant.id, label: "B1", minCapacity: 1, maxCapacity: 2, shape: "BOOTH", zone: "Bar", posX: 480, posY: 340, width: 80, height: 60, sortOrder: 8 },
+      { restaurantId: restaurant.id, label: "B2", minCapacity: 1, maxCapacity: 3, shape: "BOOTH", zone: "Bar", posX: 600, posY: 340, width: 80, height: 60, sortOrder: 9 },
+    ],
+  });
+
+  console.log("Created restaurant tables for Bella Italia");
+
   // Create a second sample restaurant
   const restaurant2 = await prisma.restaurant.upsert({
     where: { slug: "zum-goldenen-hirsch" },

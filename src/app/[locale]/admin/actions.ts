@@ -185,3 +185,93 @@ export async function updateReservationStatus(id: string, status: string) {
   revalidatePath("/");
   return { success: true };
 }
+
+// ── Table Management Actions ──────────────────────────────────────────
+
+export async function createTable(data: {
+  label: string;
+  minCapacity: number;
+  maxCapacity: number;
+  shape: string;
+  zone: string;
+  isCombinable: boolean;
+}) {
+  const restaurantId = await getSessionRestaurantId();
+  const maxOrder = await prisma.restaurantTable.findFirst({
+    where: { restaurantId },
+    orderBy: { sortOrder: "desc" },
+    select: { sortOrder: true },
+  });
+
+  await prisma.restaurantTable.create({
+    data: {
+      ...data,
+      shape: data.shape as "ROUND" | "SQUARE" | "RECTANGLE" | "BOOTH",
+      sortOrder: (maxOrder?.sortOrder ?? -1) + 1,
+      restaurantId,
+    },
+  });
+
+  revalidatePath("/");
+  return { success: true };
+}
+
+export async function updateTable(
+  id: string,
+  data: {
+    label: string;
+    minCapacity: number;
+    maxCapacity: number;
+    shape: string;
+    zone: string;
+    isCombinable: boolean;
+    isActive: boolean;
+  }
+) {
+  await getSessionRestaurantId();
+  await prisma.restaurantTable.update({
+    where: { id },
+    data: {
+      ...data,
+      shape: data.shape as "ROUND" | "SQUARE" | "RECTANGLE" | "BOOTH",
+    },
+  });
+  revalidatePath("/");
+  return { success: true };
+}
+
+export async function deleteTable(id: string) {
+  await getSessionRestaurantId();
+  await prisma.restaurantTable.delete({ where: { id } });
+  revalidatePath("/");
+  return { success: true };
+}
+
+export async function updateTablePositions(
+  tables: {
+    id: string;
+    posX: number;
+    posY: number;
+    width: number;
+    height: number;
+    rotation: number;
+  }[]
+) {
+  await getSessionRestaurantId();
+  await Promise.all(
+    tables.map((t) =>
+      prisma.restaurantTable.update({
+        where: { id: t.id },
+        data: {
+          posX: t.posX,
+          posY: t.posY,
+          width: t.width,
+          height: t.height,
+          rotation: t.rotation,
+        },
+      })
+    )
+  );
+  revalidatePath("/");
+  return { success: true };
+}

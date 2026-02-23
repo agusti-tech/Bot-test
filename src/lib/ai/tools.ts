@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { findBestTable } from "@/lib/table-assignment";
 import { AnthropicTool, ToolHandler, Locale } from "./types";
 
 const MAX_CONCURRENT = parseInt(
@@ -12,7 +13,7 @@ export const toolDefinitions: AnthropicTool[] = [
   {
     name: "check_availability",
     description:
-      "Check if the restaurant has availability for a given date, time, and party size. Use this before creating a reservation.",
+      "Check if the restaurant has availability for a given date, time, and party size. Returns a specific table assignment if available. Use this before creating a reservation.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -27,6 +28,11 @@ export const toolDefinitions: AnthropicTool[] = [
         party_size: {
           type: "integer",
           description: "Number of guests",
+        },
+        seating_preference: {
+          type: "string",
+          description:
+            "Optional seating preference: patio, bar, main dining, private room, etc.",
         },
       },
       required: ["date", "time", "party_size"],
@@ -76,6 +82,10 @@ export const toolDefinitions: AnthropicTool[] = [
           type: "string",
           description: "Optional special requests or notes",
         },
+        seating_preference: {
+          type: "string",
+          description: "Optional seating preference",
+        },
       },
       required: ["date", "time", "party_size", "guest_name", "guest_phone"],
     },
@@ -88,10 +98,11 @@ async function checkAvailability(
   input: Record<string, unknown>,
   context: { restaurantId: string; locale: Locale }
 ): Promise<unknown> {
-  const { date, time, party_size } = input as {
+  const { date, time, party_size, seating_preference } = input as {
     date: string;
     time: string;
     party_size: number;
+    seating_preference?: string;
   };
 
   // Load restaurant opening hours
@@ -136,31 +147,65 @@ async function checkAvailability(
     };
   }
 
-  // Check concurrent reservations (within a 1-hour window)
-  const windowStart = minutesToTime(Math.max(0, requestMinutes - 30));
-  const windowEnd = minutesToTime(requestMinutes + 30);
-
-  const existingCount = await prisma.reservation.count({
-    where: {
-      restaurantId: context.restaurantId,
-      date: new Date(date),
-      time: { gte: windowStart, lte: windowEnd },
-      status: { notIn: ["CANCELLED"] },
-    },
+  // Try to find a specific table using smart assignment
+  const table = await findBestTable({
+    restaurantId: context.restaurantId,
+    date,
+    time,
+    partySize: party_size,
+    seatingPreference: seating_preference,
   });
 
-  if (existingCount >= MAX_CONCURRENT) {
+  if (table) {
     return {
-      available: false,
-      reason: `That time slot is fully booked. There are already ${existingCount} reservations around ${time}.`,
+      available: true,
+      table: {
+        label: table.label,
+        capacity: table.maxCapacity,
+        zone: table.zone,
+      },
+      openHours: `${dayHours.open} – ${dayHours.close}`,
+      partySize: party_size,
+    };
+  }
+
+  // Fallback: check if it's a general capacity issue (for restaurants without tables configured)
+  const tableCount = await prisma.restaurantTable.count({
+    where: { restaurantId: context.restaurantId, isActive: true },
+  });
+
+  if (tableCount === 0) {
+    // No tables configured — use legacy concurrent reservation check
+    const windowStart = minutesToTime(Math.max(0, requestMinutes - 30));
+    const windowEnd = minutesToTime(requestMinutes + 30);
+
+    const existingCount = await prisma.reservation.count({
+      where: {
+        restaurantId: context.restaurantId,
+        date: new Date(date),
+        time: { gte: windowStart, lte: windowEnd },
+        status: { notIn: ["CANCELLED"] },
+      },
+    });
+
+    if (existingCount >= MAX_CONCURRENT) {
+      return {
+        available: false,
+        reason: `That time slot is fully booked. There are already ${existingCount} reservations around ${time}.`,
+      };
+    }
+
+    return {
+      available: true,
+      existingReservations: existingCount,
+      openHours: `${dayHours.open} – ${dayHours.close}`,
+      partySize: party_size,
     };
   }
 
   return {
-    available: true,
-    existingReservations: existingCount,
-    openHours: `${dayHours.open} – ${dayHours.close}`,
-    partySize: party_size,
+    available: false,
+    reason: `No tables available for a party of ${party_size} at ${time}. All suitable tables are booked during that time.`,
   };
 }
 
@@ -254,7 +299,7 @@ async function createReservation(
   input: Record<string, unknown>,
   context: { restaurantId: string; locale: Locale }
 ): Promise<unknown> {
-  const { date, time, party_size, guest_name, guest_phone, guest_email, notes } =
+  const { date, time, party_size, guest_name, guest_phone, guest_email, notes, seating_preference } =
     input as {
       date: string;
       time: string;
@@ -263,18 +308,37 @@ async function createReservation(
       guest_phone: string;
       guest_email?: string;
       notes?: string;
+      seating_preference?: string;
     };
 
-  // Re-validate availability
-  const availResult = (await checkAvailability(
-    { date, time, party_size },
-    context
-  )) as { available: boolean; reason?: string };
+  // Re-validate availability and get table assignment
+  const restaurant = await prisma.restaurant.findUnique({
+    where: { id: context.restaurantId },
+    select: { openingHours: true },
+  });
 
-  if (!availResult.available) {
+  if (!restaurant) {
+    return { success: false, error: "Restaurant not found." };
+  }
+
+  // Try to assign a specific table
+  const table = await findBestTable({
+    restaurantId: context.restaurantId,
+    date,
+    time,
+    partySize: party_size,
+    seatingPreference: seating_preference,
+  });
+
+  // Check if tables are configured but none available
+  const tableCount = await prisma.restaurantTable.count({
+    where: { restaurantId: context.restaurantId, isActive: true },
+  });
+
+  if (tableCount > 0 && !table) {
     return {
       success: false,
-      error: availResult.reason || "Time slot is no longer available.",
+      error: "No tables available for this party size at the requested time.",
     };
   }
 
@@ -289,6 +353,8 @@ async function createReservation(
       guestEmail: guest_email || null,
       notes: notes || null,
       source: "ai_assistant",
+      tableId: table?.id || null,
+      seatingPreference: seating_preference || null,
     },
   });
 
@@ -301,6 +367,9 @@ async function createReservation(
       partySize: reservation.partySize,
       guestName: reservation.guestName,
       status: reservation.status,
+      table: table
+        ? { label: table.label, zone: table.zone }
+        : null,
     },
   };
 }
