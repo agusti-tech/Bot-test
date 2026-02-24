@@ -143,7 +143,7 @@ export default function WalkInDialog({
         setSubmitting(false);
         return;
       }
-      if (result && typeof result === "object" && result.success && result.noShowWarning) {
+      if (result && typeof result === "object" && result.success && "noShowWarning" in result && result.noShowWarning) {
         toast.warning(t("guestNoShowWarning", { count: result.noShowCount ?? 0 }));
       }
       resetForm();
