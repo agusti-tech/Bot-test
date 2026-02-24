@@ -36,7 +36,7 @@ import {
   createTable,
   updateTable,
   deleteTable,
-} from "@/app/[locale]/admin/actions";
+} from "@/app/[locale]/admin/(dashboard)/actions";
 import { toast } from "sonner";
 
 interface RestaurantTable {

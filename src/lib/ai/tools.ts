@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { findBestTable } from "@/lib/table-assignment";
+import { estimateWaitMinutes } from "@/lib/waitlist";
+import { findOrCreateGuest, findGuestByPhone } from "@/lib/guest";
 import { AnthropicTool, ToolHandler, Locale } from "./types";
 
 const MAX_CONCURRENT = parseInt(
@@ -90,6 +92,43 @@ export const toolDefinitions: AnthropicTool[] = [
       required: ["date", "time", "party_size", "guest_name", "guest_phone"],
     },
   },
+  {
+    name: "add_to_waitlist",
+    description:
+      "Add a guest to the waitlist when no table is available. Use after check_availability returns no tables. Collect name and optionally phone, then call this.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        guest_name: { type: "string", description: "Guest's full name" },
+        guest_phone: {
+          type: "string",
+          description: "Optional phone number",
+        },
+        party_size: { type: "integer", description: "Number of guests" },
+        seating_preference: {
+          type: "string",
+          description: "Optional seating preference: patio, bar, etc.",
+        },
+        notes: { type: "string", description: "Optional notes" },
+      },
+      required: ["guest_name", "party_size"],
+    },
+  },
+  {
+    name: "get_guest_by_phone",
+    description:
+      "Look up a returning guest by phone number. Use when you have the guest's phone to check if they have visited before; if found, you may welcome them back and use their preferences (seating, dietary).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        guest_phone: {
+          type: "string",
+          description: "Guest's phone number to look up",
+        },
+      },
+      required: ["guest_phone"],
+    },
+  },
 ];
 
 // --- Tool Handlers ---
@@ -157,11 +196,15 @@ async function checkAvailability(
   });
 
   if (table) {
+    const tableLabel = table.combinedWithLabel
+      ? `${table.label} + ${table.combinedWithLabel}`
+      : table.label;
+    const capacity = table.combinedCapacity ?? table.maxCapacity;
     return {
       available: true,
       table: {
-        label: table.label,
-        capacity: table.maxCapacity,
+        label: tableLabel,
+        capacity,
         zone: table.zone,
       },
       openHours: `${dayHours.open} – ${dayHours.close}`,
@@ -342,6 +385,14 @@ async function createReservation(
     };
   }
 
+  const guest = await findOrCreateGuest({
+    restaurantId: context.restaurantId,
+    name: guest_name.trim(),
+    phone: (guest_phone ?? "").trim() || null,
+    email: (guest_email ?? "").trim() || null,
+    seatingPreference: seating_preference || null,
+  });
+
   const reservation = await prisma.reservation.create({
     data: {
       restaurantId: context.restaurantId,
@@ -354,10 +405,13 @@ async function createReservation(
       notes: notes || null,
       source: "ai_assistant",
       tableId: table?.id || null,
+      combinedWithTableId: table?.combinedWithTableId || null,
       seatingPreference: seating_preference || null,
+      guestId: guest?.id ?? null,
     },
   });
 
+  // Do not return table assignment to the guest; it is for internal use only.
   return {
     success: true,
     reservation: {
@@ -367,9 +421,68 @@ async function createReservation(
       partySize: reservation.partySize,
       guestName: reservation.guestName,
       status: reservation.status,
-      table: table
-        ? { label: table.label, zone: table.zone }
-        : null,
+    },
+  };
+}
+
+async function addToWaitlist(
+  input: Record<string, unknown>,
+  context: { restaurantId: string; locale: Locale }
+): Promise<unknown> {
+  const { guest_name, guest_phone, party_size, seating_preference, notes } = input as {
+    guest_name: string;
+    guest_phone?: string;
+    party_size: number;
+    seating_preference?: string;
+    notes?: string;
+  };
+
+  const estimatedWaitMin = await estimateWaitMinutes(context.restaurantId, party_size);
+
+  await prisma.waitlistEntry.create({
+    data: {
+      restaurantId: context.restaurantId,
+      guestName: guest_name.trim(),
+      guestPhone: guest_phone?.trim() || null,
+      partySize: party_size,
+      seatingPref: seating_preference?.trim() || null,
+      notes: notes?.trim() || null,
+      status: "WAITING",
+      estimatedWaitMin: estimatedWaitMin ?? null,
+    },
+  });
+
+  const waitMessage =
+    estimatedWaitMin != null
+      ? ` Estimated wait: about ${estimatedWaitMin} minutes.`
+      : "";
+  return {
+    success: true,
+    message: `Added ${guest_name} to the waitlist for ${party_size} guests.${waitMessage}`,
+    estimatedWaitMin: estimatedWaitMin ?? undefined,
+  };
+}
+
+async function getGuestByPhone(
+  input: Record<string, unknown>,
+  context: { restaurantId: string; locale: Locale }
+): Promise<unknown> {
+  const { guest_phone } = input as { guest_phone: string };
+  const phone = (guest_phone ?? "").trim();
+  if (!phone) return { found: false, guest: null };
+  const guest = await findGuestByPhone(context.restaurantId, phone);
+  if (!guest)
+    return { found: false, guest: null };
+  return {
+    found: true,
+    guest: {
+      name: guest.name,
+      totalVisits: guest.totalVisits,
+      noShowCount: guest.noShowCount,
+      seatingPreference: guest.seatingPreference,
+      dietaryRestrictions: guest.dietaryRestrictions,
+      tags: guest.tags,
+      lastVisitAt: guest.lastVisitAt?.toISOString() ?? null,
     },
   };
 }
@@ -380,6 +493,8 @@ export const toolHandlers: Record<string, ToolHandler> = {
   check_availability: checkAvailability,
   get_menu_info: getMenuInfo,
   create_reservation: createReservation,
+  add_to_waitlist: addToWaitlist,
+  get_guest_by_phone: getGuestByPhone,
 };
 
 // --- Helpers ---

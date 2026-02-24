@@ -8,11 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Users, Clock, CheckCircle, MapPin, UserPlus, RefreshCw } from "lucide-react";
+import { seatWaitlistEntryAtTable } from "@/app/[locale]/admin/(dashboard)/actions";
 import { getTableStatus, STATUS_COLORS, type TableStatus } from "@/lib/table-status";
 import dynamic from "next/dynamic";
 import TableDetailPanel from "./TableDetailPanel";
 import WalkInDialog from "./WalkInDialog";
 import TimelineView from "./TimelineView";
+import SeatingSuggestionsStrip from "./SeatingSuggestionsStrip";
+import type { SuggestedSeating } from "@/lib/waitlist";
 
 const FloorPlanLive = dynamic(() => import("./FloorPlanLive"), {
   ssr: false,
@@ -32,6 +35,8 @@ interface SerializedReservation {
   estimatedDuration: number;
   seatedAt: string | null;
   completedAt: string | null;
+  cleaningClearedAt: string | null;
+  guest?: { name: string; totalVisits: number; noShowCount: number } | null;
 }
 
 export interface DashboardTable {
@@ -42,6 +47,7 @@ export interface DashboardTable {
   shape: string;
   zone: string | null;
   isActive: boolean;
+  isCombinable?: boolean;
   posX: number;
   posY: number;
   width: number;
@@ -50,12 +56,37 @@ export interface DashboardTable {
   reservations: SerializedReservation[];
 }
 
+export interface WaitlistEntryRow {
+  id: string;
+  guestName: string;
+  guestPhone: string | null;
+  partySize: number;
+  notes: string | null;
+  seatingPref: string | null;
+  estimatedWaitMin: number | null;
+  status: string;
+  tableId: string | null;
+  tableLabel: string | null;
+  notifiedAt: string | null;
+  seatedAt: string | null;
+  createdAt: string;
+}
+
 interface HostDashboardProps {
   tables: DashboardTable[];
   restaurantId: string;
+  waitlistCount?: number;
+  waitlistEntries?: WaitlistEntryRow[];
+  suggestedSeatings?: SuggestedSeating[];
 }
 
-export default function HostDashboard({ tables, restaurantId }: HostDashboardProps) {
+export default function HostDashboard({
+  tables,
+  restaurantId,
+  waitlistCount = 0,
+  waitlistEntries = [],
+  suggestedSeatings = [],
+}: HostDashboardProps) {
   const t = useTranslations("admin");
   const router = useRouter();
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
@@ -86,6 +117,8 @@ export default function HostDashboard({ tables, restaurantId }: HostDashboardPro
         ...r,
         seatedAt: r.seatedAt ? new Date(r.seatedAt) : null,
         completedAt: r.completedAt ? new Date(r.completedAt) : null,
+        cleaningClearedAt: r.cleaningClearedAt ? new Date(r.cleaningClearedAt) : null,
+        guest: r.guest ?? undefined,
       })),
     };
     return {
@@ -116,7 +149,7 @@ export default function HostDashboard({ tables, restaurantId }: HostDashboardPro
   return (
     <div className="space-y-4">
       {/* Summary bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <Users className="h-8 w-8 text-blue-500" />
@@ -153,6 +186,15 @@ export default function HostDashboard({ tables, restaurantId }: HostDashboardPro
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <UserPlus className="h-8 w-8 text-violet-500" />
+            <div>
+              <div className="text-2xl font-bold">{waitlistCount}</div>
+              <div className="text-xs text-muted-foreground">{t("waitlistCount")}</div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Toolbar */}
@@ -182,6 +224,17 @@ export default function HostDashboard({ tables, restaurantId }: HostDashboardPro
         </div>
       </div>
 
+      {/* Seating suggestions strip */}
+      {suggestedSeatings.length > 0 && (
+        <SeatingSuggestionsStrip
+          suggestions={suggestedSeatings}
+          onSeat={async (entryId: string, tableId: string) => {
+            await seatWaitlistEntryAtTable(entryId, tableId);
+            router.refresh();
+          }}
+        />
+      )}
+
       {/* Main content */}
       <div className="flex gap-4">
         <div className="flex-1">
@@ -201,11 +254,28 @@ export default function HostDashboard({ tables, restaurantId }: HostDashboardPro
                         ? {
                             guestName: ts.statusInfo.currentReservation.guestName,
                             partySize: ts.statusInfo.currentReservation.partySize,
+                            combinedTableLabel:
+                              (ts.statusInfo.currentReservation as { combinedTableLabel?: string | null }).combinedTableLabel ?? undefined,
                           }
                         : null,
                     }))}
                     selectedId={selectedTableId}
                     onSelect={setSelectedTableId}
+                    tableSuggestion={
+                      suggestedSeatings.length > 0
+                        ? Object.fromEntries(
+                            suggestedSeatings
+                              .filter((s) => s.suggestions[0])
+                              .map((s) => [
+                                s.tableId,
+                                {
+                                  guestName: s.suggestions[0].guestName,
+                                  partySize: s.suggestions[0].partySize,
+                                },
+                              ])
+                          )
+                        : undefined
+                    }
                   />
                 </CardContent>
               </Card>
@@ -226,6 +296,14 @@ export default function HostDashboard({ tables, restaurantId }: HostDashboardPro
             table={selectedTable.table}
             statusInfo={selectedTable.statusInfo}
             onClose={() => setSelectedTableId(null)}
+            restaurantId={restaurantId}
+            waitlistEntries={waitlistEntries}
+            onSeatFromWaitlist={async (entryId: string) => {
+              if (!selectedTableId) return;
+              await seatWaitlistEntryAtTable(entryId, selectedTableId);
+              setSelectedTableId(null);
+              router.refresh();
+            }}
           />
         )}
       </div>

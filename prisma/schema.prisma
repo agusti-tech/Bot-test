@@ -96,7 +96,8 @@ model RestaurantTable {
   isActive        Boolean         @default(true)
   isCombinable    Boolean         @default(false)
   sortOrder       Int             @default(0)
-  reservations    Reservation[]
+  reservations           Reservation[] @relation("PrimaryTable")
+  reservationsAsCombined Reservation[] @relation("CombinedTable")
   waitlistEntries WaitlistEntry[]
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
@@ -184,14 +185,17 @@ model Reservation {
   notes             String?
   status            ReservationStatus @default(PENDING)
   source            String            @default("web") // "web", "phone", "ai_assistant", "walk_in"
-  tableId           String?
-  table             RestaurantTable?  @relation(fields: [tableId], references: [id])
+  tableId              String?
+  table                RestaurantTable?  @relation("PrimaryTable", fields: [tableId], references: [id])
+  combinedWithTableId  String?
+  combinedWithTable    RestaurantTable?  @relation("CombinedTable", fields: [combinedWithTableId], references: [id])
   guestId           String?
   guest             Guest?            @relation(fields: [guestId], references: [id])
   estimatedDuration Int               @default(90) // minutes
   seatingPreference String?
   seatedAt          DateTime?
   completedAt       DateTime?
+  cleaningClearedAt DateTime?          // when host marks "cleaning done" / table free
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 

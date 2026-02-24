@@ -1,12 +1,16 @@
 import { prisma } from "@/lib/prisma";
 
-interface TableCandidate {
+export interface TableCandidate {
   id: string;
   label: string;
   maxCapacity: number;
   minCapacity: number;
   zone: string | null;
   shape: string;
+  combinedWithTableId?: string;
+  combinedWithLabel?: string;
+  /** When combined, total capacity of both tables. */
+  combinedCapacity?: number;
 }
 
 /**
@@ -40,16 +44,17 @@ export async function findBestTable(params: {
 
   if (tables.length === 0) return null;
 
-  // 2. Get all non-cancelled reservations for this date
+  // 2. Get all non-cancelled reservations for this date (including those using combined tables)
   const reservations = await prisma.reservation.findMany({
     where: {
       restaurantId,
       date: new Date(date),
       status: { notIn: ["CANCELLED"] },
-      tableId: { not: null },
+      OR: [{ tableId: { not: null } }, { combinedWithTableId: { not: null } }],
     },
     select: {
       tableId: true,
+      combinedWithTableId: true,
       time: true,
       estimatedDuration: true,
     },
@@ -64,39 +69,72 @@ export async function findBestTable(params: {
   const requestStart = timeToMinutes(time);
   const requestEnd = requestStart + durationMinutes;
 
-  // 3. For each table, check if it's free during the requested window
-  const availableTables = tables.filter((table) => {
-    const tableReservations = reservations.filter((r) => r.tableId === table.id);
-
-    // Check for time overlap with any existing reservation
+  function isTableFree(tableId: string): boolean {
+    const tableReservations = reservations.filter(
+      (r) => r.tableId === tableId || r.combinedWithTableId === tableId
+    );
     return !tableReservations.some((r) => {
       const resStart = timeToMinutes(r.time);
       const resEnd = resStart + (r.estimatedDuration || 90);
-      // Overlap: if request starts before reservation ends AND request ends after reservation starts
       return requestStart < resEnd && requestEnd > resStart;
-    });
-  });
-
-  if (availableTables.length === 0) return null;
-
-  // 4. Sort: prefer seating preference match, then smallest capacity (already sorted)
-  if (seatingPreference) {
-    const prefLower = seatingPreference.toLowerCase();
-    availableTables.sort((a, b) => {
-      const aMatch = a.zone?.toLowerCase().includes(prefLower) ? 0 : 1;
-      const bMatch = b.zone?.toLowerCase().includes(prefLower) ? 0 : 1;
-      if (aMatch !== bMatch) return aMatch - bMatch;
-      return a.maxCapacity - b.maxCapacity;
     });
   }
 
-  const best = availableTables[0];
-  return {
-    id: best.id,
-    label: best.label,
-    maxCapacity: best.maxCapacity,
-    minCapacity: best.minCapacity,
-    zone: best.zone,
-    shape: best.shape,
-  };
+  // 3. For each table, check if it's free (consider both primary and combined-with usage)
+  const availableTables = tables.filter((table) => isTableFree(table.id));
+
+  if (availableTables.length > 0) {
+    // 4. Sort: prefer seating preference match, then smallest capacity
+    if (seatingPreference) {
+      const prefLower = seatingPreference.toLowerCase();
+      availableTables.sort((a, b) => {
+        const aMatch = a.zone?.toLowerCase().includes(prefLower) ? 0 : 1;
+        const bMatch = b.zone?.toLowerCase().includes(prefLower) ? 0 : 1;
+        if (aMatch !== bMatch) return aMatch - bMatch;
+        return a.maxCapacity - b.maxCapacity;
+      });
+    }
+    const best = availableTables[0];
+    return {
+      id: best.id,
+      label: best.label,
+      maxCapacity: best.maxCapacity,
+      minCapacity: best.minCapacity,
+      zone: best.zone,
+      shape: best.shape,
+    };
+  }
+
+  // 5. No single table: try combinable pair (same zone, both isCombinable, both free)
+  const combinableTables = await prisma.restaurantTable.findMany({
+    where: {
+      restaurantId,
+      isActive: true,
+      isCombinable: true,
+    },
+    orderBy: { maxCapacity: "asc" },
+  });
+
+  for (let i = 0; i < combinableTables.length; i++) {
+    for (let j = i + 1; j < combinableTables.length; j++) {
+      const t1 = combinableTables[i];
+      const t2 = combinableTables[j];
+      if (t1.maxCapacity + t2.maxCapacity < partySize) continue;
+      if (t1.zone !== t2.zone) continue;
+      if (!isTableFree(t1.id) || !isTableFree(t2.id)) continue;
+      return {
+        id: t1.id,
+        label: t1.label,
+        maxCapacity: t1.maxCapacity,
+        minCapacity: t1.minCapacity,
+        zone: t1.zone,
+        shape: t1.shape,
+        combinedWithTableId: t2.id,
+        combinedWithLabel: t2.label,
+        combinedCapacity: t1.maxCapacity + t2.maxCapacity,
+      };
+    }
+  }
+
+  return null;
 }

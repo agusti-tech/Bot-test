@@ -30,6 +30,11 @@ export interface TableWithReservations {
     estimatedDuration: number;
     seatedAt: Date | null;
     completedAt: Date | null;
+    cleaningClearedAt?: Date | null;
+    /** When reservation uses two tables combined, e.g. "T3 + T4" */
+    combinedTableLabel?: string | null;
+    /** Guest profile for badge (first-time, no-show warning) */
+    guest?: { name: string; totalVisits: number; noShowCount: number } | null;
   }[];
 }
 
@@ -87,9 +92,10 @@ export function getTableStatus(
     };
   }
 
-  // Check for recently completed (cleaning)
+  // Check for recently completed (cleaning) — skip if host already cleared cleaning
   const recentlyCompleted = sorted.find((r) => {
     if (!r.completedAt) return false;
+    if (r.cleaningClearedAt) return false; // host marked table as free
     const completedTime = new Date(r.completedAt).getTime();
     const minutesSinceCompleted = (now.getTime() - completedTime) / 60000;
     return minutesSinceCompleted < CLEANING_BUFFER_MINUTES;

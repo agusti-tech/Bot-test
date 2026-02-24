@@ -5,24 +5,50 @@ import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { X, Users, Clock, CheckCircle, XCircle, Armchair } from "lucide-react";
+import { X, Users, Clock, CheckCircle, XCircle, Armchair, CircleCheck } from "lucide-react";
 import { STATUS_COLORS, type TableStatusInfo } from "@/lib/table-status";
-import { seatReservation, completeReservation, markNoShow } from "@/app/[locale]/admin/actions";
-import type { DashboardTable } from "./HostDashboard";
+import { getSuggestedPartiesForTable } from "@/lib/waitlist";
+import { seatReservation, completeReservation, markNoShow, clearCleaning } from "@/app/[locale]/admin/(dashboard)/actions";
+import type { DashboardTable, WaitlistEntryRow } from "./HostDashboard";
+import GuestBadge from "./GuestBadge";
+import { toast } from "sonner";
 
 interface TableDetailPanelProps {
   table: DashboardTable;
   statusInfo: TableStatusInfo;
   onClose: () => void;
+  restaurantId?: string;
+  waitlistEntries?: WaitlistEntryRow[];
+  onSeatFromWaitlist?: (entryId: string) => Promise<void>;
+}
+
+function waitMinutes(createdAt: string): number {
+  return Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000);
 }
 
 export default function TableDetailPanel({
   table,
   statusInfo,
   onClose,
+  restaurantId = "",
+  waitlistEntries = [],
+  onSeatFromWaitlist,
 }: TableDetailPanelProps) {
   const t = useTranslations("admin");
   const [loading, setLoading] = useState<string | null>(null);
+
+  const suggestedParties =
+    statusInfo.status === "available" &&
+    restaurantId &&
+    waitlistEntries.length > 0
+      ? getSuggestedPartiesForTable(
+          restaurantId,
+          table.id,
+          waitlistEntries,
+          table.maxCapacity,
+          table.minCapacity
+        ).slice(0, 5)
+      : [];
 
   async function handleAction(
     action: (id: string) => Promise<{ success: boolean }>,
@@ -73,7 +99,15 @@ export default function TableDetailPanel({
         {statusInfo.currentReservation && (
           <div className="rounded-lg border p-3 space-y-2">
             <div className="font-medium">
-              {statusInfo.currentReservation.guestName}
+              {statusInfo.currentReservation.guest ? (
+                <GuestBadge
+                  name={statusInfo.currentReservation.guest.name}
+                  totalVisits={statusInfo.currentReservation.guest.totalVisits}
+                  noShowCount={statusInfo.currentReservation.guest.noShowCount}
+                />
+              ) : (
+                statusInfo.currentReservation.guestName
+              )}
             </div>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <span className="flex items-center gap-1">
@@ -133,6 +167,19 @@ export default function TableDetailPanel({
                   {t("complete")}
                 </Button>
               )}
+              {statusInfo.status === "cleaning" && (
+                <Button
+                  size="sm"
+                  className="flex-1"
+                  disabled={loading === statusInfo.currentReservation.id}
+                  onClick={() =>
+                    handleAction(clearCleaning, statusInfo.currentReservation!.id)
+                  }
+                >
+                  <CircleCheck className="h-3.5 w-3.5 mr-1" />
+                  {t("makeFree")}
+                </Button>
+              )}
               {(statusInfo.status === "reserved" ||
                 statusInfo.status === "occupied") && (
                 <Button
@@ -152,9 +199,63 @@ export default function TableDetailPanel({
         )}
 
         {/* No current reservation */}
-        {!statusInfo.currentReservation && statusInfo.status === "available" && (
+        {!statusInfo.currentReservation && statusInfo.status === "available" && suggestedParties.length === 0 && (
           <div className="text-center py-4 text-sm text-muted-foreground">
             {t("statusAvailable")}
+          </div>
+        )}
+
+        {/* Seat from waitlist (available tables) */}
+        {!statusInfo.currentReservation && statusInfo.status === "available" && suggestedParties.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-muted-foreground">
+              {t("seatFromWaitlist")}
+            </div>
+            {suggestedParties.map((entry, idx) => (
+              <div
+                key={entry.id}
+                className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+              >
+                <div>
+                  <div className="font-medium flex items-center gap-2">
+                    {entry.guestName}
+                    {idx === 0 && (
+                      <Badge variant="secondary" className="text-xs">
+                        {t("suggestedSeating")}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-muted-foreground">
+                    {entry.partySize}p &middot; {t("waitingTime")} {waitMinutes(entry.createdAt)} {t("minutes")}
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={loading === entry.id}
+                  onClick={async () => {
+                    if (!onSeatFromWaitlist) return;
+                    setLoading(entry.id);
+                    try {
+                      await onSeatFromWaitlist(entry.id);
+                      toast.success(t("seatedFromWaitlist") || "Seated from waitlist");
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : "Failed to seat");
+                    } finally {
+                      setLoading(null);
+                    }
+                  }}
+                >
+                  <Armchair className="h-3.5 w-3.5 mr-1" />
+                  {t("seat")}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!statusInfo.currentReservation && statusInfo.status === "available" && suggestedParties.length === 0 && waitlistEntries.length > 0 && (
+          <div className="text-center py-2 text-xs text-muted-foreground">
+            {t("noWaitlistSuggestions")}
           </div>
         )}
 
@@ -170,7 +271,17 @@ export default function TableDetailPanel({
                 className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
               >
                 <div>
-                  <div className="font-medium">{r.guestName}</div>
+                  <div className="font-medium">
+                    {r.guest ? (
+                      <GuestBadge
+                        name={r.guest.name}
+                        totalVisits={r.guest.totalVisits}
+                        noShowCount={r.guest.noShowCount}
+                      />
+                    ) : (
+                      r.guestName
+                    )}
+                  </div>
                   <div className="text-muted-foreground">
                     {r.time} &middot; {r.partySize}p
                   </div>

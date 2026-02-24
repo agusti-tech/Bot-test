@@ -26,19 +26,19 @@ export default async function FloorPlanPage() {
     orderBy: { sortOrder: "asc" },
   });
 
-  const serialized = tables.map((t) => ({
-    id: t.id,
-    label: t.label,
-    minCapacity: t.minCapacity,
-    maxCapacity: t.maxCapacity,
-    shape: t.shape as string,
-    zone: t.zone,
-    isActive: t.isActive,
-    posX: t.posX,
-    posY: t.posY,
-    width: t.width,
-    height: t.height,
-    rotation: t.rotation,
+  const serialized = tables.map((table) => ({
+    id: table.id,
+    label: table.label,
+    minCapacity: table.minCapacity,
+    maxCapacity: table.maxCapacity,
+    shape: table.shape as string,
+    zone: table.zone,
+    isActive: table.isActive,
+    posX: table.posX,
+    posY: table.posY,
+    width: table.width,
+    height: table.height,
+    rotation: table.rotation,
   }));
 
   return (

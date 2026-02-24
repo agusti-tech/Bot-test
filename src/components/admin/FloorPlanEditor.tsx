@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Save, RotateCcw } from "lucide-react";
-import { updateTablePositions } from "@/app/[locale]/admin/actions";
+import { updateTablePositions } from "@/app/[locale]/admin/(dashboard)/actions";
 import { toast } from "sonner";
 
 const FloorPlanCanvas = dynamic(

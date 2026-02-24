@@ -29,7 +29,7 @@ import {
   createMenuItem,
   updateMenuItem,
   deleteMenuItem,
-} from "@/app/[locale]/admin/actions";
+} from "@/app/[locale]/admin/(dashboard)/actions";
 
 interface MenuItem {
   id: string;

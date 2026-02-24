@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { updateRestaurant } from "@/app/[locale]/admin/actions";
+import { updateRestaurant } from "@/app/[locale]/admin/(dashboard)/actions";
 
 const DAYS = [
   "monday",
@@ -20,6 +20,16 @@ const DAYS = [
   "sunday",
 ] as const;
 
+const DEFAULT_OPENING_HOURS: Record<string, { open: string; close: string } | null> = {
+  monday: { open: "09:00", close: "22:00" },
+  tuesday: { open: "09:00", close: "22:00" },
+  wednesday: { open: "09:00", close: "22:00" },
+  thursday: { open: "09:00", close: "22:00" },
+  friday: { open: "09:00", close: "22:00" },
+  saturday: { open: "09:00", close: "22:00" },
+  sunday: { open: "09:00", close: "22:00" },
+};
+
 interface RestaurantFormProps {
   restaurant: {
     id: string;
@@ -29,15 +39,25 @@ interface RestaurantFormProps {
     address: string;
     phone: string | null;
     email: string | null;
-    openingHours: Record<string, { open: string; close: string } | null>;
+    openingHours: Record<string, { open: string; close: string } | null> | null;
+    settings?: { noShowBlockThreshold?: number; noShowBlockEnabled?: boolean } | null;
   };
+}
+
+function getOpeningHours(
+  hours: RestaurantFormProps["restaurant"]["openingHours"]
+): Record<string, { open: string; close: string } | null> {
+  if (hours && typeof hours === "object" && "monday" in hours) {
+    return { ...DEFAULT_OPENING_HOURS, ...hours };
+  }
+  return { ...DEFAULT_OPENING_HOURS };
 }
 
 export default function RestaurantForm({ restaurant }: RestaurantFormProps) {
   const t = useTranslations("admin");
   const tDays = useTranslations("days");
   const [loading, setLoading] = useState(false);
-  const [hours, setHours] = useState(restaurant.openingHours);
+  const [hours, setHours] = useState(() => getOpeningHours(restaurant.openingHours));
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -218,6 +238,40 @@ export default function RestaurantForm({ restaurant }: RestaurantFormProps) {
               </div>
             );
           })}
+        </CardContent>
+      </Card>
+
+      {/* No-show policy */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("noShowPolicy")}</CardTitle>
+          <p className="text-sm text-muted-foreground">{t("noShowPolicyDescription")}</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <input type="hidden" name="noShowPolicySection" value="1" />
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="noShowBlockThreshold">{t("noShowBlockThreshold")}</Label>
+              <Input
+                id="noShowBlockThreshold"
+                name="noShowBlockThreshold"
+                type="number"
+                min={1}
+                defaultValue={restaurant.settings?.noShowBlockThreshold ?? 2}
+                className="w-20"
+              />
+            </div>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                name="noShowBlockEnabled"
+                value="1"
+                defaultChecked={restaurant.settings?.noShowBlockEnabled ?? false}
+                className="rounded"
+              />
+              <span className="text-sm">{t("noShowBlockEnabled")}</span>
+            </label>
+          </div>
         </CardContent>
       </Card>
 

@@ -7,13 +7,19 @@ import type { DashboardTable } from "./HostDashboard";
 interface LiveTableInfo {
   table: DashboardTable;
   status: TableStatus;
-  currentReservation: { guestName: string; partySize: number } | null;
+  currentReservation: {
+    guestName: string;
+    partySize: number;
+    combinedTableLabel?: string | null;
+  } | null;
 }
 
 interface FloorPlanLiveProps {
   tableStatuses: LiveTableInfo[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  /** Optional: for available tables, show suggested waitlist party (e.g. "Maria (4)") */
+  tableSuggestion?: Record<string, { guestName: string; partySize: number }>;
 }
 
 const CANVAS_WIDTH = 750;
@@ -24,6 +30,7 @@ export default function FloorPlanLive({
   tableStatuses,
   selectedId,
   onSelect,
+  tableSuggestion,
 }: FloorPlanLiveProps) {
   return (
     <Stage
@@ -72,6 +79,7 @@ export default function FloorPlanLive({
           const isSelected = table.id === selectedId;
           const color = STATUS_COLORS[status];
           const fillOpacity = status === "available" ? 0.25 : 0.5;
+          const suggestion = status === "available" && tableSuggestion?.[table.id];
 
           return (
             <Group
@@ -105,10 +113,10 @@ export default function FloorPlanLive({
                 />
               )}
 
-              {/* Label */}
+              {/* Label: show combined table label (e.g. "T3 + T4") when this table is part of a combined reservation */}
               <Text
-                text={table.label}
-                fontSize={14}
+                text={currentReservation?.combinedTableLabel ?? table.label}
+                fontSize={currentReservation?.combinedTableLabel ? 11 : 14}
                 fontStyle="bold"
                 fill="#1e293b"
                 align="center"
@@ -121,7 +129,7 @@ export default function FloorPlanLive({
               />
 
               {/* Capacity when not occupied */}
-              {status !== "occupied" && (
+              {status !== "occupied" && !suggestion && (
                 <Text
                   text={`${table.maxCapacity}`}
                   fontSize={11}
@@ -132,6 +140,32 @@ export default function FloorPlanLive({
                   y={6}
                   listening={false}
                 />
+              )}
+
+              {/* Suggested waitlist party on available table */}
+              {suggestion && (
+                <>
+                  <Text
+                    text={suggestion.guestName.split(" ")[0]}
+                    fontSize={10}
+                    fill="#7c3aed"
+                    align="center"
+                    width={table.width}
+                    offsetX={table.width / 2}
+                    y={4}
+                    listening={false}
+                  />
+                  <Text
+                    text={`${suggestion.partySize}p`}
+                    fontSize={9}
+                    fill="#64748b"
+                    align="center"
+                    width={table.width}
+                    offsetX={table.width / 2}
+                    y={16}
+                    listening={false}
+                  />
+                </>
               )}
 
               {/* Guest name when occupied */}

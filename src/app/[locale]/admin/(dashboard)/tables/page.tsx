@@ -31,21 +31,21 @@ export default async function TablesPage() {
     orderBy: { sortOrder: "asc" },
   });
 
-  const serialized = tables.map((t) => ({
-    id: t.id,
-    label: t.label,
-    minCapacity: t.minCapacity,
-    maxCapacity: t.maxCapacity,
-    shape: t.shape,
-    zone: t.zone,
-    isActive: t.isActive,
-    isCombinable: t.isCombinable,
-    posX: t.posX,
-    posY: t.posY,
-    width: t.width,
-    height: t.height,
-    rotation: t.rotation,
-    sortOrder: t.sortOrder,
+  const serialized = tables.map((table) => ({
+    id: table.id,
+    label: table.label,
+    minCapacity: table.minCapacity,
+    maxCapacity: table.maxCapacity,
+    shape: table.shape,
+    zone: table.zone,
+    isActive: table.isActive,
+    isCombinable: table.isCombinable,
+    posX: table.posX,
+    posY: table.posY,
+    width: table.width,
+    height: table.height,
+    rotation: table.rotation,
+    sortOrder: table.sortOrder,
   }));
 
   return (

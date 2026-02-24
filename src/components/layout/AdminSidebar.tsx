@@ -12,6 +12,8 @@ import {
   Armchair,
   Map,
   Monitor,
+  List,
+  Users,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -55,6 +57,16 @@ export default function AdminSidebar() {
       icon: CalendarDays,
     },
     {
+      href: `/${locale}/admin/guests`,
+      label: t("guests"),
+      icon: Users,
+    },
+    {
+      href: `/${locale}/admin/waitlist`,
+      label: t("waitlist"),
+      icon: List,
+    },
+    {
       href: `/${locale}/admin/dashboard`,
       label: t("hostDashboard"),
       icon: Monitor,
@@ -89,7 +101,7 @@ export default function AdminSidebar() {
           <Button
             variant="ghost"
             className="w-full justify-start gap-3 text-muted-foreground"
-            onClick={() => signOut({ callbackUrl: `/${locale}` })}
+            onClick={() => signOut({ callbackUrl: `/${locale}/admin/login` })}
           >
             <LogOut className="h-4 w-4" />
             {t("logout")}
