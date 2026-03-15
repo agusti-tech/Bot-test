@@ -274,7 +274,11 @@ export default function ReservationManager({
           return;
         }
         if (result && typeof result === "object" && result.success && "noShowWarning" in result && result.noShowWarning) {
+<<<<<<< HEAD
           toast.warning(t("guestNoShowWarning", { count: result.noShowCount ?? 0 }));
+=======
+          toast.warning(t("guestNoShowWarning", { count: ("noShowCount" in result ? result.noShowCount : 0) ?? 0 }));
+>>>>>>> 8634048a5e81ab3d836445baf5e12d000cca5d19
         } else {
           toast.success(t("saved"));
         }

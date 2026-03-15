@@ -21,7 +21,8 @@ export default auth((req) => {
   // Protect admin routes (except login)
   if (isValidLocale && pathParts[2] === "admin" && pathParts[3] !== "login") {
     if (!req.auth) {
-      const loginUrl = new URL(`/${locale}/admin/login`, req.url);
+      const loginUrl = req.nextUrl.clone();
+      loginUrl.pathname = `/${locale}/admin/login`;
       return NextResponse.redirect(loginUrl);
     }
   }
@@ -33,7 +34,8 @@ export default auth((req) => {
     pathParts[3] === "login" &&
     req.auth
   ) {
-    const dashboardUrl = new URL(`/${locale}/admin`, req.url);
+    const dashboardUrl = req.nextUrl.clone();
+    dashboardUrl.pathname = `/${locale}/admin`;
     return NextResponse.redirect(dashboardUrl);
   }
 
