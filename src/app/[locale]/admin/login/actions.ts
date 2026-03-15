@@ -9,9 +9,14 @@ export async function authenticate(
   formData: FormData
 ) {
   try {
+    const email = String(formData.get("email") ?? "").trim().toLowerCase();
+    const password = String(formData.get("password") ?? "").trim();
+    if (!email || !password) {
+      return "CredentialsSignin";
+    }
     await signIn("credentials", {
-      email: formData.get("email"),
-      password: formData.get("password"),
+      email,
+      password,
       redirectTo: `/${locale}/admin`,
     });
   } catch (error) {

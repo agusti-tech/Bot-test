@@ -43,8 +43,36 @@ model Restaurant {
   tables          RestaurantTable[]
   guests          Guest[]
   waitlistEntries WaitlistEntry[]
+  tokenAccount    RestaurantTokenAccount?
+  tokenUsageLogs  TokenUsageLog[]
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
+}
+
+model RestaurantTokenAccount {
+  id               String   @id @default(cuid())
+  restaurantId     String   @unique
+  restaurant       Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  balance          Int      @default(0)
+  allowanceMonthly Int      @default(100)
+  periodStartsAt   DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([restaurantId])
+}
+
+model TokenUsageLog {
+  id           String   @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  quantity     Int      // negative = deduction, positive = grant
+  actionType   String   // e.g. monthly_grant, website_update, menu_item_create, ai_description, ai_image
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([restaurantId])
+  @@index([restaurantId, createdAt])
 }
 
 model MenuCategory {

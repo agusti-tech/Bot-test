@@ -40,7 +40,11 @@ interface RestaurantFormProps {
     phone: string | null;
     email: string | null;
     openingHours: Record<string, { open: string; close: string } | null> | null;
-    settings?: { noShowBlockThreshold?: number; noShowBlockEnabled?: boolean } | null;
+    settings?: {
+      noShowBlockThreshold?: number;
+      noShowBlockEnabled?: boolean;
+      siteTier?: string;
+    } | null;
   };
 }
 
@@ -69,8 +73,8 @@ export default function RestaurantForm({ restaurant }: RestaurantFormProps) {
     try {
       await updateRestaurant(formData);
       toast.success(t("saved"));
-    } catch {
-      toast.error("Error saving changes");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error saving changes");
     } finally {
       setLoading(false);
     }
@@ -238,6 +242,37 @@ export default function RestaurantForm({ restaurant }: RestaurantFormProps) {
               </div>
             );
           })}
+        </CardContent>
+      </Card>
+
+      {/* Website style */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("websiteStyle")}</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Choose how your public restaurant page looks to guests.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Label htmlFor="siteTier">{t("websiteStyle")}</Label>
+            <select
+              id="siteTier"
+              name="siteTier"
+              defaultValue={
+                restaurant.settings?.siteTier === "editorial"
+                  ? "editorial"
+                  : restaurant.settings?.siteTier === "premium"
+                    ? "premium"
+                    : "basic"
+              }
+              className="flex h-10 w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <option value="basic">{t("siteTierBasic")}</option>
+              <option value="editorial">{t("siteTierEditorial")}</option>
+              <option value="premium">{t("siteTierPremium")}</option>
+            </select>
+          </div>
         </CardContent>
       </Card>
 

@@ -29,6 +29,8 @@ import {
   createMenuItem,
   updateMenuItem,
   deleteMenuItem,
+  generateMenuItemDescription,
+  generateMenuItemImage,
 } from "@/app/[locale]/admin/(dashboard)/actions";
 
 interface MenuItem {
@@ -77,8 +79,8 @@ export default function MenuManager({
       await createCategory(formData);
       setAddCategoryOpen(false);
       toast.success(t("saved"));
-    } catch {
-      toast.error("Error");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error");
     }
   }
 
@@ -87,8 +89,8 @@ export default function MenuManager({
     try {
       await deleteCategory(id);
       toast.success(t("saved"));
-    } catch {
-      toast.error("Error");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error");
     }
   }
 
@@ -99,8 +101,8 @@ export default function MenuManager({
       await createMenuItem(formData);
       setAddItemOpen(null);
       toast.success(t("saved"));
-    } catch {
-      toast.error("Error");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error");
     }
   }
 
@@ -112,8 +114,8 @@ export default function MenuManager({
       await updateMenuItem(editItemOpen.id, formData);
       setEditItemOpen(null);
       toast.success(t("saved"));
-    } catch {
-      toast.error("Error");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error");
     }
   }
 
@@ -180,8 +182,8 @@ export default function MenuManager({
                       try {
                         await updateCategory(category.id, formData);
                         toast.success(t("saved"));
-                      } catch {
-                        toast.error("Error");
+                      } catch (err) {
+                        toast.error(err instanceof Error ? err.message : "Error");
                       }
                     }}
                     className="space-y-4"
@@ -329,11 +331,62 @@ function MenuItemForm({
   const [selectedTags, setSelectedTags] = useState<string[]>(
     item?.dietaryTags || []
   );
+  const [descriptionEn, setDescriptionEn] = useState(
+    item?.description?.en ?? ""
+  );
+  const [descriptionDe, setDescriptionDe] = useState(
+    item?.description?.de ?? ""
+  );
+  const [generatingDesc, setGeneratingDesc] = useState(false);
+  const [generatingImg, setGeneratingImg] = useState(false);
 
   function toggleTag(tag: string) {
     setSelectedTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     );
+  }
+
+  async function handleGenerateDescription() {
+    const form = document.querySelector("form");
+    if (!form) return;
+    setGeneratingDesc(true);
+    try {
+      const formData = new FormData(form);
+      formData.set("categoryId", categoryId);
+      const result = await generateMenuItemDescription(formData);
+      if (result.success && result.description_en != null) {
+        setDescriptionEn(result.description_en);
+        setDescriptionDe(result.description_de ?? result.description_en);
+        toast.success(t("descriptionGenerated"));
+      } else {
+        toast.error(result.error ?? "Error");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error");
+    } finally {
+      setGeneratingDesc(false);
+    }
+  }
+
+  async function handleGenerateImage() {
+    const form = document.querySelector("form");
+    if (!form) return;
+    setGeneratingImg(true);
+    try {
+      const formData = new FormData(form);
+      formData.set("categoryId", categoryId);
+      const result = await generateMenuItemImage(formData);
+      if (result.success && result.imageUrl) {
+        toast.success(t("saved"));
+        // Image URL would be set on item when we support imageUrl in the form
+      } else {
+        toast.error(result.error ?? "Error");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error");
+    } finally {
+      setGeneratingImg(false);
+    }
   }
 
   return (
@@ -370,16 +423,38 @@ function MenuItemForm({
           <Label>{t("itemDescription")} ({t("english")})</Label>
           <Input
             name="description_en"
-            defaultValue={item?.description?.en || ""}
+            value={descriptionEn}
+            onChange={(e) => setDescriptionEn(e.target.value)}
           />
         </div>
         <div className="space-y-2">
           <Label>{t("itemDescription")} ({t("german")})</Label>
           <Input
             name="description_de"
-            defaultValue={item?.description?.de || ""}
+            value={descriptionDe}
+            onChange={(e) => setDescriptionDe(e.target.value)}
           />
         </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleGenerateDescription}
+          disabled={generatingDesc}
+        >
+          {generatingDesc ? t("generating") : t("generateDescription")}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleGenerateImage}
+          disabled={generatingImg}
+        >
+          {generatingImg ? t("generating") : t("generateImage")}
+        </Button>
       </div>
 
       <div className="space-y-2">

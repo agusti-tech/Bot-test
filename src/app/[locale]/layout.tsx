@@ -2,8 +2,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { notFound } from "next/navigation";
 import { routing } from "@/../i18n/routing";
 import { Toaster } from "@/components/ui/sonner";
-import Header from "@/components/layout/Header";
-import Footer from "@/components/layout/Footer";
+import ConditionalAppShell from "@/components/layout/ConditionalAppShell";
 import "../globals.css";
 
 export function generateStaticParams() {
@@ -34,9 +33,7 @@ export default async function LocaleLayout({
     <html lang={locale}>
       <body className="font-sans antialiased min-h-screen flex flex-col">
         <NextIntlClientProvider locale={locale} messages={messages}>
-          <Header />
-          <main className="flex-1">{children}</main>
-          <Footer />
+          <ConditionalAppShell>{children}</ConditionalAppShell>
           <Toaster />
         </NextIntlClientProvider>
       </body>

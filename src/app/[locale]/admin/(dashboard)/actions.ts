@@ -1,12 +1,14 @@
 "use server";
 
 import { auth } from "@/../auth";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { sendWaitlistTableReady } from "@/lib/notifications";
 import { findBestTable } from "@/lib/table-assignment";
 import { findOrCreateGuest, incrementGuestTotalVisits, incrementGuestNoShowCount } from "@/lib/guest";
 import { estimateWaitMinutes } from "@/lib/waitlist";
+import { checkAndDeductTokens, TOKEN_COSTS } from "@/lib/tokens";
 
 async function getSessionRestaurantId(): Promise<string> {
   const session = await auth();
@@ -109,20 +111,42 @@ export async function updateRestaurant(formData: FormData) {
     data.openingHours = openingHours;
   }
 
+  const current = await prisma.restaurant.findUnique({
+    where: { id: restaurantId },
+    select: { settings: true },
+  });
+  const settings = (current?.settings ?? null) as Record<string, unknown> | null;
+  const nextSettings: Record<string, unknown> = { ...(settings ?? {}) };
+
   if (formData.get("noShowPolicySection") === "1") {
-    const current = await prisma.restaurant.findUnique({
-      where: { id: restaurantId },
-      select: { settings: true },
-    });
-    const settings = (current?.settings ?? null) as Record<string, unknown> | null;
     const thresholdRaw = formData.get("noShowBlockThreshold");
     const threshold = Math.max(1, Number(thresholdRaw ?? settings?.noShowBlockThreshold ?? 2));
     const noShowBlockEnabled = formData.get("noShowBlockEnabled") === "1";
-    data.settings = {
-      ...(settings ?? {}),
-      noShowBlockThreshold: threshold,
-      noShowBlockEnabled,
-    };
+    nextSettings.noShowBlockThreshold = threshold;
+    nextSettings.noShowBlockEnabled = noShowBlockEnabled;
+  }
+
+  const siteTierRaw = formData.get("siteTier");
+  if (siteTierRaw === "basic" || siteTierRaw === "editorial" || siteTierRaw === "premium") {
+    nextSettings.siteTier = siteTierRaw;
+  }
+
+  data.settings = nextSettings as Prisma.InputJsonValue;
+
+  const previousTier = (settings?.siteTier as string) || "basic";
+  const tierSwitch =
+    (siteTierRaw === "editorial" || siteTierRaw === "premium") &&
+    previousTier === "basic";
+  const tokenCost =
+    TOKEN_COSTS.website_update + (tierSwitch ? TOKEN_COSTS.tier_switch : 0);
+  const tokenResult = await checkAndDeductTokens(
+    restaurantId,
+    tokenCost,
+    "website_update",
+    tierSwitch ? { tierSwitch: true, newTier: siteTierRaw } : undefined
+  );
+  if (!tokenResult.ok) {
+    throw new Error(tokenResult.error);
   }
 
   await prisma.restaurant.update({
@@ -186,9 +210,18 @@ export async function deleteCategory(id: string) {
 }
 
 export async function createMenuItem(formData: FormData) {
-  await getSessionRestaurantId();
+  const restaurantId = await getSessionRestaurantId();
 
   const categoryId = formData.get("categoryId") as string;
+
+  const tokenResult = await checkAndDeductTokens(
+    restaurantId,
+    TOKEN_COSTS.menu_item_create,
+    "menu_item_create"
+  );
+  if (!tokenResult.ok) {
+    throw new Error(tokenResult.error);
+  }
 
   const maxOrder = await prisma.menuItem.findFirst({
     where: { categoryId },
@@ -221,7 +254,30 @@ export async function createMenuItem(formData: FormData) {
 }
 
 export async function updateMenuItem(id: string, formData: FormData) {
-  await getSessionRestaurantId();
+  const restaurantId = await getSessionRestaurantId();
+
+  const item = await prisma.menuItem.findUnique({
+    where: { id },
+    select: { categoryId: true },
+  });
+  if (!item) throw new Error("Menu item not found");
+  const category = await prisma.menuCategory.findUnique({
+    where: { id: item.categoryId },
+    select: { restaurantId: true },
+  });
+  if (!category || category.restaurantId !== restaurantId) {
+    throw new Error("Unauthorized");
+  }
+
+  const tokenResult = await checkAndDeductTokens(
+    restaurantId,
+    TOKEN_COSTS.menu_item_update,
+    "menu_item_update",
+    { menuItemId: id }
+  );
+  if (!tokenResult.ok) {
+    throw new Error(tokenResult.error);
+  }
 
   const dietaryTags = formData.get("dietaryTags") as string;
 
@@ -253,6 +309,116 @@ export async function deleteMenuItem(id: string) {
 
   revalidatePath("/");
   return { success: true };
+}
+
+/** Generate menu item description using AI. Deducts tokens; returns generated text for en/de. */
+export async function generateMenuItemDescription(formData: FormData): Promise<{
+  success: boolean;
+  description_en?: string;
+  description_de?: string;
+  error?: string;
+}> {
+  const restaurantId = await getSessionRestaurantId();
+  const categoryId = formData.get("categoryId") as string;
+  const nameEn = (formData.get("name_en") as string) || "";
+  const nameDe = (formData.get("name_de") as string) || "";
+
+  const category = await prisma.menuCategory.findUnique({
+    where: { id: categoryId },
+    select: { name: true, restaurantId: true },
+  });
+  if (!category || category.restaurantId !== restaurantId) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  const tokenResult = await checkAndDeductTokens(
+    restaurantId,
+    TOKEN_COSTS.ai_description,
+    "ai_description",
+    { categoryId }
+  );
+  if (!tokenResult.ok) {
+    return { success: false, error: tokenResult.error };
+  }
+
+  try {
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    const anthropic = new Anthropic();
+    const categoryNameEn =
+      typeof category.name === "object" && category.name && "en" in category.name
+        ? (category.name as { en: string }).en
+        : "";
+    const categoryNameDe =
+      typeof category.name === "object" && category.name && "de" in category.name
+        ? (category.name as { de: string }).de
+        : "";
+
+    const prompt = `You are a restaurant menu copywriter. Generate a short, appetizing description for this menu item. Output exactly two lines: first line is the English description (max 15 words), second line is the German description (max 15 words). No labels, no numbering. Only the two lines.
+Item name (EN): ${nameEn}
+Item name (DE): ${nameDe}
+Category: ${categoryNameEn} / ${categoryNameDe}`;
+
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-5-20250929",
+      max_tokens: 150,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const text =
+      message.content
+        .filter((c) => c.type === "text")
+        .map((c) => (c as { text: string }).text)
+        .join("") || "";
+    const lines = text.trim().split("\n").map((s) => s.trim()).filter(Boolean);
+    const description_en = lines[0] ?? "";
+    const description_de = lines[1] ?? lines[0] ?? "";
+
+    return {
+      success: true,
+      description_en,
+      description_de,
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Generation failed";
+    return { success: false, error: message };
+  }
+}
+
+/** Generate menu item image. Deducts tokens; returns image URL or error. Image generation API not configured by default. */
+export async function generateMenuItemImage(formData: FormData): Promise<{
+  success: boolean;
+  imageUrl?: string;
+  error?: string;
+}> {
+  const restaurantId = await getSessionRestaurantId();
+  const categoryId = formData.get("categoryId") as string;
+  const nameEn = (formData.get("name_en") as string) || "";
+  const descriptionEn = (formData.get("description_en") as string) || "";
+
+  const category = await prisma.menuCategory.findUnique({
+    where: { id: categoryId },
+    select: { restaurantId: true },
+  });
+  if (!category || category.restaurantId !== restaurantId) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  const tokenResult = await checkAndDeductTokens(
+    restaurantId,
+    TOKEN_COSTS.ai_image,
+    "ai_image",
+    { categoryId }
+  );
+  if (!tokenResult.ok) {
+    return { success: false, error: tokenResult.error };
+  }
+
+  // Image generation not implemented: would call DALL·E, Replicate, or similar.
+  // Return a clear message so the UI can show it.
+  return {
+    success: false,
+    error: "Image generation is not configured. Contact support to enable.",
+  };
 }
 
 export async function updateReservationStatus(id: string, status: string) {

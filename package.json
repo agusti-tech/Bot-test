@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "seed": "npx tsx prisma/seed.ts",
-    "seed:stress": "npx tsx prisma/seed-stress.ts"
+    "seed:stress": "npx tsx prisma/seed-stress.ts",
+    "seed:haus-mueller": "npx tsx prisma/seed-haus-mueller.ts",
+    "seed:haus-mueller:docker": "docker compose exec app npm run seed:haus-mueller",
+    "verify:haus-mueller": "npx tsx prisma/verify-haus-mueller-login.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
