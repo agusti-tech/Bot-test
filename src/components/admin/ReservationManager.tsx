@@ -140,6 +140,14 @@ function getAssignTableOptions(
 interface ReservationManagerProps {
   reservations: Reservation[];
   tables: TableOption[];
+  pagination?: {
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    totalPages: number;
+    date: string;
+    status: string;
+  };
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -173,6 +181,7 @@ function todayISO() {
 export default function ReservationManager({
   reservations,
   tables,
+  pagination,
 }: ReservationManagerProps) {
   const t = useTranslations("admin");
   const router = useRouter();
@@ -200,9 +209,9 @@ export default function ReservationManager({
   const [editSeatingPreference, setEditSeatingPreference] = useState<string>("");
   const [autoAssigning, setAutoAssigning] = useState(false);
 
-  const currentDate = searchParams.get("date") || "";
+  const currentDate = searchParams.get("date") || pagination?.date || "";
   const unassignedReservations = reservations.filter((r) => !r.tableId && r.status !== "CANCELLED");
-  const currentStatus = searchParams.get("status") || "all";
+  const currentStatus = (searchParams.get("status") || pagination?.status) ?? "all";
 
   function updateFilter(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -211,6 +220,15 @@ export default function ReservationManager({
     } else {
       params.delete(key);
     }
+    params.delete("page");
+    router.push(`?${params.toString()}`);
+  }
+
+  function goToPage(pageNum: number) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("date", currentDate || new Date().toISOString().slice(0, 10));
+    if (currentStatus !== "all") params.set("status", currentStatus);
+    params.set("page", String(pageNum));
     router.push(`?${params.toString()}`);
   }
 
@@ -542,6 +560,31 @@ export default function ReservationManager({
           </Button>
         )}
       </div>
+
+      {pagination && pagination.totalPages > 0 && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>
+            {t("page")} {pagination.page} {t("of")} {pagination.totalPages}
+            {pagination.totalCount > 0 && ` (${pagination.totalCount} ${t("reservations")})`}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={pagination.page <= 1}
+            onClick={() => goToPage(pagination.page - 1)}
+          >
+            {t("previous")}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={pagination.page >= pagination.totalPages}
+            onClick={() => goToPage(pagination.page + 1)}
+          >
+            {t("next")}
+          </Button>
+        </div>
+      )}
 
       {/* Table */}
       {reservations.length === 0 ? (

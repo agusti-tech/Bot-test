@@ -34,3 +34,8 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Database seeding and stress testing
+
+- **Baseline seed:** `npm run seed` — creates admin, sample restaurant (Bella Italia) with menu and 10 tables, owner user. Log in as `owner@bella-italia.de` / `owner123`.
+- **Stress seed (optional):** `npm run seed:stress` — run **after** `npm run seed`. Adds ~90 tables (~300 seats), 250 guests, and 550 reservations to Bella Italia so you can test pagination, zone filter, and analytics at scale. Safe to run multiple times (skips if targets already met).

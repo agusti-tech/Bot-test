@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { Search, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -28,19 +29,26 @@ type GuestRow = {
   seatingPreference: string | null;
 };
 
+const PAGE_SIZE = 50;
+
 export default function GuestManager() {
   const t = useTranslations("admin");
   const locale = useLocale();
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [guests, setGuests] = useState<GuestRow[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [isPending, startTransition] = useTransition();
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   useEffect(() => {
     startTransition(async () => {
-      const list = await getGuests(search || undefined);
-      setGuests(list);
+      const result = await getGuests(search || undefined, page, PAGE_SIZE);
+      setGuests(result.guests);
+      setTotalCount(result.totalCount);
     });
-  }, [search]);
+  }, [search, page]);
 
   return (
     <Card>
@@ -54,7 +62,10 @@ export default function GuestManager() {
           <Input
             placeholder={t("searchGuests")}
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             className="pl-9"
           />
         </div>
@@ -65,6 +76,7 @@ export default function GuestManager() {
         ) : guests.length === 0 ? (
           <p className="text-muted-foreground text-sm">{t("noGuests")}</p>
         ) : (
+          <>
           <Table>
             <TableHeader>
               <TableRow>
@@ -104,6 +116,31 @@ export default function GuestManager() {
               ))}
             </TableBody>
           </Table>
+          {totalCount > PAGE_SIZE && (
+            <div className="flex items-center gap-2 mt-3 text-sm text-muted-foreground">
+              <span>
+                {t("page")} {page} {t("of")} {totalPages}
+                {totalCount > 0 && ` (${totalCount} ${t("guests")})`}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => p - 1)}
+              >
+                {t("previous")}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                {t("next")}
+              </Button>
+            </div>
+          )}
+          </>
         )}
       </CardContent>
     </Card>

@@ -156,11 +156,15 @@ export default async function DashboardPage() {
 
   const suggestedSeatings = await getSuggestedSeatingsForRestaurant(restaurantId);
 
+  const zones = [...new Set(serialized.map((t) => t.zone).filter(Boolean))] as string[];
+  zones.sort();
+
   return (
     <div>
       <h1 className="text-3xl font-bold mb-8">{t("hostDashboard")}</h1>
       <HostDashboard
         tables={serialized}
+        zones={zones}
         restaurantId={restaurantId}
         waitlistCount={waitlistCount}
         waitlistEntries={waitlistEntriesSerialized}

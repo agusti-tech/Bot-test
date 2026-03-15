@@ -74,6 +74,7 @@ export interface WaitlistEntryRow {
 
 interface HostDashboardProps {
   tables: DashboardTable[];
+  zones?: string[];
   restaurantId: string;
   waitlistCount?: number;
   waitlistEntries?: WaitlistEntryRow[];
@@ -82,6 +83,7 @@ interface HostDashboardProps {
 
 export default function HostDashboard({
   tables,
+  zones = [],
   restaurantId,
   waitlistCount = 0,
   waitlistEntries = [],
@@ -92,6 +94,7 @@ export default function HostDashboard({
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedZone, setSelectedZone] = useState<string>("all");
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
@@ -109,7 +112,7 @@ export default function HostDashboard({
 
   // Compute table statuses
   const now = new Date();
-  const tableStatuses = tables.map((table) => {
+  const allTableStatuses = tables.map((table) => {
     // Convert serialized dates back
     const tableWithDates = {
       ...table,
@@ -127,10 +130,15 @@ export default function HostDashboard({
     };
   });
 
-  // Summary stats
+  const tableStatuses =
+    zones.length > 1 && selectedZone !== "all"
+      ? allTableStatuses.filter((ts) => ts.table.zone === selectedZone)
+      : allTableStatuses;
+
+  // Summary stats (use filtered tableStatuses so numbers match view)
   const activeTables = tableStatuses.filter((ts) => ts.table.isActive);
-  const totalCovers = tables.reduce(
-    (sum, t) => sum + t.reservations.filter((r) => r.status !== "CANCELLED" && r.status !== "NO_SHOW").reduce((s, r) => s + r.partySize, 0),
+  const totalCovers = tableStatuses.reduce(
+    (sum, ts) => sum + ts.table.reservations.filter((r) => r.status !== "CANCELLED" && r.status !== "NO_SHOW").reduce((s, r) => s + r.partySize, 0),
     0
   );
   const seatedNow = tableStatuses.filter((ts) => ts.statusInfo.status === "occupied").length;
@@ -198,8 +206,24 @@ export default function HostDashboard({
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {zones.length > 1 && (
+            <Tabs
+              value={selectedZone}
+              onValueChange={setSelectedZone}
+              className="w-auto"
+            >
+              <TabsList>
+                <TabsTrigger value="all">{t("allZones")}</TabsTrigger>
+                {zones.map((z) => (
+                  <TabsTrigger key={z} value={z}>
+                    {z}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          )}
           {(["available", "reserved", "occupied", "cleaning", "blocked"] as TableStatus[]).map(
             (status) => (
               <Badge key={status} variant="outline" className="gap-1.5">
@@ -283,7 +307,7 @@ export default function HostDashboard({
             <TabsContent value="timeline">
               <Card>
                 <CardContent className="p-4">
-                  <TimelineView tables={tables} />
+                  <TimelineView tables={tableStatuses.map((ts) => ts.table)} />
                 </CardContent>
               </Card>
             </TabsContent>

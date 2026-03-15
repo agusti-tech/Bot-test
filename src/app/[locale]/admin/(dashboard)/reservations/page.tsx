@@ -24,16 +24,22 @@ async function getSessionRestaurantId(): Promise<string> {
 export default async function ReservationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; status?: string }>;
+  searchParams: Promise<{ date?: string; status?: string; page?: string }>;
 }) {
   const t = await getTranslations("admin");
   const restaurantId = await getSessionRestaurantId();
   const params = await searchParams;
 
-  const where: Record<string, unknown> = { restaurantId };
-  if (params.date) {
-    where.date = new Date(params.date);
-  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dateParam = params.date ?? today.toISOString().slice(0, 10);
+  const page = Math.max(1, parseInt(params.page ?? "1", 10));
+  const pageSize = 50;
+
+  const where: Record<string, unknown> = {
+    restaurantId,
+    date: new Date(dateParam),
+  };
   if (params.status && params.status !== "all") {
     where.status = params.status;
   }
@@ -62,10 +68,25 @@ export default async function ReservationsPage({
     return d.toISOString().slice(0, 10);
   }
 
-  const [reservations, tables] = await Promise.all([
+  const [totalCount, overlapReservations, reservationsPage, tables] = await Promise.all([
+    prisma.reservation.count({ where }),
+    prisma.reservation.findMany({
+      where,
+      select: {
+        id: true,
+        date: true,
+        time: true,
+        tableId: true,
+        combinedWithTableId: true,
+        estimatedDuration: true,
+        status: true,
+      },
+    }),
     prisma.reservation.findMany({
       where,
       orderBy: [{ date: "desc" }, { time: "asc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
       include: {
         table: { select: { label: true, zone: true } },
         combinedWithTable: { select: { label: true } },
@@ -78,7 +99,8 @@ export default async function ReservationsPage({
     }),
   ]);
 
-  // For each reservation, compute table ids that are free for its date/time slot
+  const reservations = reservationsPage;
+
   function availableTableIdsFor(
     res: { id: string; date: Date; time: string; estimatedDuration: number; tableId: string | null; combinedWithTableId?: string | null }
   ): string[] {
@@ -86,7 +108,7 @@ export default async function ReservationsPage({
     const duration = res.estimatedDuration ?? DEFAULT_DURATION;
     return tables
       .filter((t) => {
-        const hasConflict = reservations.some(
+        const hasConflict = overlapReservations.some(
           (other) =>
             other.id !== res.id &&
             (other.tableId === t.id || other.combinedWithTableId === t.id) &&
@@ -100,7 +122,6 @@ export default async function ReservationsPage({
       .map((t) => t.id);
   }
 
-  // Serialize for the client component
   const serialized = reservations.map((r) => {
     const availableTableIds = availableTableIdsFor({
       id: r.id,
@@ -143,10 +164,23 @@ export default async function ReservationsPage({
     zone: t.zone,
   }));
 
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
   return (
     <div>
       <h1 className="text-3xl font-bold mb-8">{t("reservations")}</h1>
-      <ReservationManager reservations={serialized} tables={tablesList} />
+      <ReservationManager
+        reservations={serialized}
+        tables={tablesList}
+        pagination={{
+          page,
+          pageSize,
+          totalCount,
+          totalPages,
+          date: dateParam,
+          status: params.status ?? "all",
+        }}
+      />
     </div>
   );
 }

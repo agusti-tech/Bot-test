@@ -9,6 +9,21 @@ import { Badge } from "@/components/ui/badge";
 import { Save, RotateCcw } from "lucide-react";
 import { updateTablePositions } from "@/app/[locale]/admin/(dashboard)/actions";
 import { toast } from "sonner";
+import { VIRTUAL_WIDTH, VIRTUAL_HEIGHT } from "./floorPlanConstants";
+
+function clampTableToCanvas(t: TableData): TableData {
+  const halfW = t.width / 2;
+  const halfH = t.height / 2;
+  const minX = halfW;
+  const maxX = VIRTUAL_WIDTH - halfW;
+  const minY = halfH;
+  const maxY = VIRTUAL_HEIGHT - halfH;
+  return {
+    ...t,
+    posX: Math.max(minX, Math.min(maxX, t.posX)),
+    posY: Math.max(minY, Math.min(maxY, t.posY)),
+  };
+}
 
 const FloorPlanCanvas = dynamic(
   () => import("./FloorPlanCanvas"),
@@ -36,7 +51,9 @@ interface FloorPlanEditorProps {
 
 export default function FloorPlanEditor({ tables: initialTables }: FloorPlanEditorProps) {
   const t = useTranslations("admin");
-  const [tables, setTables] = useState<TableData[]>(initialTables);
+  const [tables, setTables] = useState<TableData[]>(() =>
+    initialTables.map(clampTableToCanvas)
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -78,7 +95,7 @@ export default function FloorPlanEditor({ tables: initialTables }: FloorPlanEdit
   };
 
   const handleReset = () => {
-    setTables(initialTables);
+    setTables(initialTables.map(clampTableToCanvas));
     setHasChanges(false);
     setSelectedId(null);
   };

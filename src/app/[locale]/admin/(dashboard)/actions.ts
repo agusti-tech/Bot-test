@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { sendWaitlistTableReady } from "@/lib/notifications";
 import { findBestTable } from "@/lib/table-assignment";
 import { findOrCreateGuest, incrementGuestTotalVisits, incrementGuestNoShowCount } from "@/lib/guest";
+import { estimateWaitMinutes } from "@/lib/waitlist";
 
 async function getSessionRestaurantId(): Promise<string> {
   const session = await auth();
@@ -397,6 +398,22 @@ export async function updateReservation(
     if (data.status === "COMPLETED") (update as Record<string, unknown>).completedAt = new Date();
   }
 
+  const effectiveGuestName = (data.guestName !== undefined ? data.guestName.trim() : reservation.guestName) || "";
+  const effectiveGuestPhone = (data.guestPhone !== undefined ? (data.guestPhone ?? "").trim() : (reservation.guestPhone ?? "").trim()) || "";
+  const effectiveSeating = data.seatingPreference !== undefined ? data.seatingPreference?.trim() || null : reservation.seatingPreference?.trim() || null;
+  if (effectiveGuestPhone) {
+    const guest = await findOrCreateGuest({
+      restaurantId,
+      name: effectiveGuestName,
+      phone: effectiveGuestPhone,
+      email: null,
+      seatingPreference: effectiveSeating,
+    });
+    (update as Record<string, unknown>).guestId = guest?.id ?? null;
+  } else {
+    (update as Record<string, unknown>).guestId = null;
+  }
+
   if (data.tableId !== undefined && data.tableId) {
     const effectiveDate = (update.date as Date) ?? reservation.date;
     const effectiveTime = (update.time as string) ?? reservation.time;
@@ -449,7 +466,7 @@ export async function updateGuest(
   return { success: true };
 }
 
-export async function getGuests(search?: string) {
+export async function getGuests(search?: string, page = 1, pageSize = 50) {
   const restaurantId = await getSessionRestaurantId();
   const q = (search ?? "").trim();
   const where = q
@@ -462,21 +479,26 @@ export async function getGuests(search?: string) {
         ],
       }
     : { restaurantId };
-  const guests = await prisma.guest.findMany({
-    where,
-    orderBy: [{ lastVisitAt: "desc" }, { name: "asc" }],
-    select: {
-      id: true,
-      name: true,
-      phone: true,
-      email: true,
-      totalVisits: true,
-      noShowCount: true,
-      lastVisitAt: true,
-      seatingPreference: true,
-    },
-  });
-  return guests;
+  const [guests, totalCount] = await Promise.all([
+    prisma.guest.findMany({
+      where,
+      orderBy: [{ lastVisitAt: "desc" }, { name: "asc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        totalVisits: true,
+        noShowCount: true,
+        lastVisitAt: true,
+        seatingPreference: true,
+      },
+    }),
+    prisma.guest.count({ where }),
+  ]);
+  return { guests, totalCount };
 }
 
 export async function getGuestById(guestId: string) {
@@ -499,6 +521,183 @@ export async function getGuestById(guestId: string) {
     },
   });
   return guest;
+}
+
+// ── Analytics ─────────────────────────────────────────────────────────
+
+function startOfDay(d: Date): Date {
+  const out = new Date(d);
+  out.setHours(0, 0, 0, 0);
+  return out;
+}
+
+function nextDay(d: Date): Date {
+  const out = new Date(d);
+  out.setDate(out.getDate() + 1);
+  return out;
+}
+
+async function periodMetrics(
+  restaurantId: string,
+  dateFrom: Date,
+  dateTo: Date
+): Promise<{
+  reservations: number;
+  byStatus: { completed: number; noShow: number; cancelled: number; pending: number };
+  bySource: { phone: number; ai: number; walkIn: number; web: number };
+  covers: number;
+  avgPartySize: number;
+}> {
+  const where = { restaurantId, date: { gte: dateFrom, lt: dateTo } };
+  const [byStatusRows, bySourceRows, completedAgg] = await Promise.all([
+    prisma.reservation.groupBy({
+      by: ["status"],
+      where,
+      _count: { id: true },
+    }),
+    prisma.reservation.groupBy({
+      by: ["source"],
+      where,
+      _count: { id: true },
+    }),
+    prisma.reservation.aggregate({
+      where: { ...where, status: "COMPLETED" },
+      _count: { id: true },
+      _sum: { partySize: true },
+    }),
+  ]);
+  const byStatus = {
+    completed: byStatusRows.find((r) => r.status === "COMPLETED")?._count.id ?? 0,
+    noShow: byStatusRows.find((r) => r.status === "NO_SHOW")?._count.id ?? 0,
+    cancelled: byStatusRows.find((r) => r.status === "CANCELLED")?._count.id ?? 0,
+    pending:
+      (byStatusRows.find((r) => r.status === "PENDING")?._count.id ?? 0) +
+      (byStatusRows.find((r) => r.status === "CONFIRMED")?._count.id ?? 0),
+  };
+  const bySource = {
+    phone: bySourceRows.find((r) => r.source === "phone")?._count.id ?? 0,
+    ai: bySourceRows.find((r) => r.source === "ai_assistant")?._count.id ?? 0,
+    walkIn: bySourceRows.find((r) => r.source === "walk_in")?._count.id ?? 0,
+    web: bySourceRows.find((r) => r.source === "web")?._count.id ?? 0,
+  };
+  const completedCount = completedAgg._count.id;
+  const covers = completedAgg._sum.partySize ?? 0;
+  const avgPartySize = completedCount > 0 ? covers / completedCount : 0;
+  const reservations = byStatusRows.reduce((s, r) => s + r._count.id, 0);
+  return {
+    reservations,
+    byStatus,
+    bySource,
+    covers,
+    avgPartySize: Math.round(avgPartySize * 10) / 10,
+  };
+}
+
+export async function getAnalyticsMetrics() {
+  const restaurantId = await getSessionRestaurantId();
+  const now = new Date();
+  const todayStart = startOfDay(now);
+  const todayEnd = nextDay(todayStart);
+  const weekStart = new Date(todayStart);
+  weekStart.setDate(weekStart.getDate() - 6);
+  const monthStart = new Date(todayStart);
+  monthStart.setMonth(monthStart.getMonth() - 1);
+
+  const [
+    restaurant,
+    todayMetrics,
+    weekMetrics,
+    monthMetrics,
+    completedWithDuration,
+    guestsAgg,
+    waitlistTodayRows,
+  ] = await Promise.all([
+    prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { settings: true },
+    }),
+    periodMetrics(restaurantId, todayStart, todayEnd),
+    periodMetrics(restaurantId, weekStart, todayEnd),
+    periodMetrics(restaurantId, monthStart, todayEnd),
+    prisma.reservation.findMany({
+      where: {
+        restaurantId,
+        status: "COMPLETED",
+        seatedAt: { not: null },
+        completedAt: { not: null },
+      },
+      select: { seatedAt: true, completedAt: true },
+    }),
+    prisma.guest.aggregate({
+      where: { restaurantId },
+      _count: { id: true },
+      _sum: { totalVisits: true, noShowCount: true },
+    }),
+    prisma.waitlistEntry.findMany({
+      where: {
+        restaurantId,
+        createdAt: { gte: todayStart },
+      },
+      select: { status: true, createdAt: true, notifiedAt: true },
+    }),
+  ]);
+
+  const settings = (restaurant?.settings ?? null) as Record<string, unknown> | null;
+  const averageDiningOverride = settings?.averageDiningDurationMinutes != null
+    ? Number(settings.averageDiningDurationMinutes)
+    : null;
+
+  const diningDurations = completedWithDuration
+    .filter((r) => r.seatedAt && r.completedAt)
+    .map((r) => (new Date(r.completedAt!).getTime() - new Date(r.seatedAt!).getTime()) / 60000);
+  const averageDiningFromHistory =
+    diningDurations.length > 0
+      ? Math.round(diningDurations.reduce((a, b) => a + b, 0) / diningDurations.length)
+      : null;
+
+  const totalGuests = guestsAgg._count.id;
+  const totalVisits = guestsAgg._sum.totalVisits ?? 0;
+  const totalNoShows = guestsAgg._sum.noShowCount ?? 0;
+  const noShowRate = totalVisits > 0 ? Math.round((totalNoShows / totalVisits) * 100) : 0;
+
+  const waitlistCount = waitlistTodayRows.length;
+  const waitlistNotified = waitlistTodayRows.filter((e) => e.status === "NOTIFIED" || e.status === "SEATED").length;
+  const waitTimes = waitlistTodayRows
+    .filter((e) => e.notifiedAt)
+    .map((e) => (new Date(e.notifiedAt!).getTime() - new Date(e.createdAt).getTime()) / 60000);
+  const avgWaitMinutes = waitTimes.length ? Math.round(waitTimes.reduce((a, b) => a + b, 0) / waitTimes.length) : null;
+
+  return {
+    today: todayMetrics,
+    week: weekMetrics,
+    month: monthMetrics,
+    averageDiningFromHistory,
+    averageDiningOverride,
+    diningDurationSampleSize: diningDurations.length,
+    totalGuests,
+    totalVisits,
+    totalNoShows,
+    noShowRate,
+    waitlistToday: waitlistCount,
+    waitlistNotified,
+    avgWaitMinutes,
+  };
+}
+
+export async function updateAverageDiningOverride(minutes: number | null) {
+  const restaurantId = await getSessionRestaurantId();
+  const current = await prisma.restaurant.findUnique({
+    where: { id: restaurantId },
+    select: { settings: true },
+  });
+  const settings = (current?.settings ?? null) as Record<string, unknown> | null;
+  const next = { ...(settings ?? {}), averageDiningDurationMinutes: minutes };
+  await prisma.restaurant.update({
+    where: { id: restaurantId },
+    data: { settings: next },
+  });
+  revalidatePath("/");
+  return { success: true };
 }
 
 // ── Table Management Actions ──────────────────────────────────────────
@@ -791,6 +990,10 @@ export async function addToWaitlist(data: {
   seatingPref?: string;
 }) {
   const restaurantId = await getSessionRestaurantId();
+  const estimatedWaitMin =
+    data.estimatedWaitMin != null
+      ? data.estimatedWaitMin
+      : await estimateWaitMinutes(restaurantId, data.partySize);
   await prisma.waitlistEntry.create({
     data: {
       restaurantId,
@@ -798,7 +1001,7 @@ export async function addToWaitlist(data: {
       guestPhone: data.guestPhone?.trim() || null,
       partySize: data.partySize,
       notes: data.notes?.trim() || null,
-      estimatedWaitMin: data.estimatedWaitMin ?? null,
+      estimatedWaitMin: estimatedWaitMin ?? null,
       seatingPref: data.seatingPref?.trim() || null,
       status: "WAITING",
     },

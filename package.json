@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "npx tsx prisma/seed.ts"
+    "seed": "npx tsx prisma/seed.ts",
+    "seed:stress": "npx tsx prisma/seed-stress.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",

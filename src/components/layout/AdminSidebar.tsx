@@ -14,6 +14,7 @@ import {
   Monitor,
   List,
   Users,
+  BarChart3,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,11 @@ export default function AdminSidebar() {
       label: t("dashboard"),
       icon: LayoutDashboard,
       exact: true,
+    },
+    {
+      href: `/${locale}/admin/analytics`,
+      label: t("analytics"),
+      icon: BarChart3,
     },
     {
       href: `/${locale}/admin/restaurant`,
