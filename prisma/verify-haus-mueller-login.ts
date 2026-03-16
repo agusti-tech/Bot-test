@@ -1,6 +1,6 @@
 /**
- * Run inside app container: npx tsx prisma/verify-haus-mueller-login.ts
- * Verifies the Haus Müller owner exists and password "owner123" matches.
+ * Run with: SEED_HAUS_MUELLER_EMAIL=... SEED_HAUS_MUELLER_PASSWORD=... npx tsx prisma/verify-haus-mueller-login.ts
+ * Verifies the Haus Müller owner exists and the given password matches.
  */
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
@@ -8,8 +8,12 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
-  const email = "owner@haus-mueller.de";
-  const password = "owner123";
+  const email = process.env.SEED_HAUS_MUELLER_EMAIL ?? "owner@haus-mueller.de";
+  const password = process.env.SEED_HAUS_MUELLER_PASSWORD;
+  if (!password) {
+    console.error("Set SEED_HAUS_MUELLER_PASSWORD in env to verify.");
+    process.exit(1);
+  }
 
   const user = await prisma.user.findUnique({
     where: { email },

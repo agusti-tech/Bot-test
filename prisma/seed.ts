@@ -3,10 +3,14 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
+const ADMIN_EMAIL = "admin@restaurant-app.local";
+const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD;
+const OWNER_PASSWORD = process.env.SEED_OWNER_PASSWORD;
+
 async function main() {
   // Check if already seeded
   const existingAdmin = await prisma.user.findUnique({
-    where: { email: "admin@restaurant-app.local" },
+    where: { email: ADMIN_EMAIL },
   });
 
   if (existingAdmin) {
@@ -14,14 +18,23 @@ async function main() {
     return;
   }
 
+  if (!ADMIN_PASSWORD || ADMIN_PASSWORD.length < 8) {
+    console.error("Set SEED_ADMIN_PASSWORD (min 8 chars) in .env before running seed.");
+    process.exit(1);
+  }
+  if (!OWNER_PASSWORD || OWNER_PASSWORD.length < 8) {
+    console.error("Set SEED_OWNER_PASSWORD (min 8 chars) in .env before running seed.");
+    process.exit(1);
+  }
+
   console.log("Seeding database...");
 
   // Create super admin
-  const hashedPassword = await bcrypt.hash("admin123", 12);
+  const hashedPassword = await bcrypt.hash(ADMIN_PASSWORD, 12);
 
   const admin = await prisma.user.create({
     data: {
-      email: "admin@restaurant-app.local",
+      email: ADMIN_EMAIL,
       hashedPassword,
       name: "Super Admin",
       role: "SUPER_ADMIN",
@@ -58,7 +71,7 @@ async function main() {
   console.log("Created restaurant:", restaurant.slug);
 
   // Create restaurant owner
-  const ownerPassword = await bcrypt.hash("owner123", 12);
+  const ownerPassword = await bcrypt.hash(OWNER_PASSWORD, 12);
   const owner = await prisma.user.create({
     data: {
       email: "owner@bella-italia.de",
@@ -389,8 +402,8 @@ async function main() {
 
   console.log("Created menu items for second restaurant");
   console.log("\n--- Seed complete ---");
-  console.log("Admin login: admin@restaurant-app.local / admin123");
-  console.log("Owner login: owner@bella-italia.de / owner123");
+  console.log("Admin login:", ADMIN_EMAIL, "/ (use your SEED_ADMIN_PASSWORD)");
+  console.log("Owner login: owner@bella-italia.de / (use your SEED_OWNER_PASSWORD)");
 }
 
 main()

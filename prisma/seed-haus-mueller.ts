@@ -3,8 +3,15 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-const OWNER_EMAIL = "owner@haus-mueller.de";
-const OWNER_PASSWORD = "owner123";
+// Use env to avoid committing credentials. Rotate password if it was ever in git.
+const OWNER_EMAIL = process.env.SEED_HAUS_MUELLER_EMAIL ?? "owner@haus-mueller.de";
+const OWNER_PASSWORD = process.env.SEED_HAUS_MUELLER_PASSWORD;
+if (!OWNER_PASSWORD || OWNER_PASSWORD.length < 8) {
+  console.error(
+    "Set SEED_HAUS_MUELLER_PASSWORD (min 8 chars) in .env. Do not commit real passwords."
+  );
+  process.exit(1);
+}
 
 async function main() {
   const slug = "haus-mueller";
@@ -35,7 +42,7 @@ async function main() {
       });
       console.log("Haus Müller owner password reset.");
     }
-    console.log("Owner login: " + OWNER_EMAIL + " / " + OWNER_PASSWORD);
+    console.log("Owner login: " + OWNER_EMAIL + " / (use your SEED_HAUS_MUELLER_PASSWORD)");
     return;
   }
 
@@ -235,7 +242,7 @@ async function main() {
 
   console.log("Created Haus Müller:", restaurant.slug);
   console.log("Public page: /en/restaurants/haus-mueller or /de/restaurants/haus-mueller");
-  console.log("Owner login: " + OWNER_EMAIL + " / " + OWNER_PASSWORD);
+  console.log("Owner login: " + OWNER_EMAIL + " / (use your SEED_HAUS_MUELLER_PASSWORD)");
 }
 
 main()
