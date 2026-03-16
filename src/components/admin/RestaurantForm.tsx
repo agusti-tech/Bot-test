@@ -46,6 +46,8 @@ interface RestaurantFormProps {
       siteTier?: string;
     } | null;
   };
+  /** Only super admin can change tier; owners see current tier as read-only */
+  canChangeTier?: boolean;
 }
 
 function getOpeningHours(
@@ -57,7 +59,7 @@ function getOpeningHours(
   return { ...DEFAULT_OPENING_HOURS };
 }
 
-export default function RestaurantForm({ restaurant }: RestaurantFormProps) {
+export default function RestaurantForm({ restaurant, canChangeTier = false }: RestaurantFormProps) {
   const t = useTranslations("admin");
   const tDays = useTranslations("days");
   const [loading, setLoading] = useState(false);
@@ -245,33 +247,45 @@ export default function RestaurantForm({ restaurant }: RestaurantFormProps) {
         </CardContent>
       </Card>
 
-      {/* Website style */}
+      {/* Website style: only super admin can change tier; owners see read-only */}
       <Card>
         <CardHeader>
           <CardTitle>{t("websiteStyle")}</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Choose how your public restaurant page looks to guests.
+            {canChangeTier
+              ? "Assign website tier according to the customer's paid plan."
+              : "Your public website style is set by your plan. Contact support to change it."}
           </p>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
             <Label htmlFor="siteTier">{t("websiteStyle")}</Label>
-            <select
-              id="siteTier"
-              name="siteTier"
-              defaultValue={
-                restaurant.settings?.siteTier === "editorial"
-                  ? "editorial"
+            {canChangeTier ? (
+              <select
+                id="siteTier"
+                name="siteTier"
+                defaultValue={
+                  restaurant.settings?.siteTier === "editorial"
+                    ? "editorial"
+                    : restaurant.settings?.siteTier === "premium"
+                      ? "premium"
+                      : "basic"
+                }
+                className="flex h-10 w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <option value="basic">{t("siteTierBasic")}</option>
+                <option value="editorial">{t("siteTierEditorial")}</option>
+                <option value="premium">{t("siteTierPremium")}</option>
+              </select>
+            ) : (
+              <p className="flex h-10 items-center text-sm text-muted-foreground">
+                {restaurant.settings?.siteTier === "editorial"
+                  ? t("siteTierEditorial")
                   : restaurant.settings?.siteTier === "premium"
-                    ? "premium"
-                    : "basic"
-              }
-              className="flex h-10 w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              <option value="basic">{t("siteTierBasic")}</option>
-              <option value="editorial">{t("siteTierEditorial")}</option>
-              <option value="premium">{t("siteTierPremium")}</option>
-            </select>
+                    ? t("siteTierPremium")
+                    : t("siteTierBasic")}
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

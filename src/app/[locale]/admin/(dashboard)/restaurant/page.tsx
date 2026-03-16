@@ -52,7 +52,10 @@ export default async function EditRestaurantPage() {
         </CardContent>
       </Card>
 
-      <RestaurantForm restaurant={JSON.parse(JSON.stringify(restaurant))} />
+      <RestaurantForm
+        restaurant={JSON.parse(JSON.stringify(restaurant))}
+        canChangeTier={role === "SUPER_ADMIN"}
+      />
     </div>
   );
 }

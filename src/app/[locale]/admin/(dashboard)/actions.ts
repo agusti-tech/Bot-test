@@ -91,6 +91,12 @@ function parseOpeningHours(raw: FormDataEntryValue | null): Record<string, { ope
 }
 
 export async function updateRestaurant(formData: FormData) {
+  const session = await auth();
+  if (!session?.user) throw new Error("Unauthorized");
+
+  const role = (session.user as unknown as Record<string, unknown>).role as string;
+  const isSuperAdmin = role === "SUPER_ADMIN";
+
   const restaurantId = await getSessionRestaurantId();
 
   const openingHours = parseOpeningHours(formData.get("openingHours"));
@@ -126,15 +132,22 @@ export async function updateRestaurant(formData: FormData) {
     nextSettings.noShowBlockEnabled = noShowBlockEnabled;
   }
 
-  const siteTierRaw = formData.get("siteTier");
-  if (siteTierRaw === "basic" || siteTierRaw === "editorial" || siteTierRaw === "premium") {
-    nextSettings.siteTier = siteTierRaw;
+  // Only SUPER_ADMIN can change site tier (assign tier per paid plan).
+  let siteTierRaw: string | null = null;
+  if (isSuperAdmin) {
+    const raw = formData.get("siteTier");
+    if (raw === "basic" || raw === "editorial" || raw === "premium") {
+      nextSettings.siteTier = raw;
+      siteTierRaw = raw;
+    }
   }
+  // Owners: tier is unchanged (nextSettings already has current from ...settings).
 
   data.settings = nextSettings as Prisma.InputJsonValue;
 
   const previousTier = (settings?.siteTier as string) || "basic";
   const tierSwitch =
+    isSuperAdmin &&
     (siteTierRaw === "editorial" || siteTierRaw === "premium") &&
     previousTier === "basic";
   const tokenCost =
@@ -143,7 +156,7 @@ export async function updateRestaurant(formData: FormData) {
     restaurantId,
     tokenCost,
     "website_update",
-    tierSwitch ? { tierSwitch: true, newTier: siteTierRaw } : undefined
+    tierSwitch ? { tierSwitch: true, newTier: siteTierRaw ?? undefined } : undefined
   );
   if (!tokenResult.ok) {
     throw new Error(tokenResult.error);
